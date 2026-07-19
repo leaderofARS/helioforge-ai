@@ -1,8 +1,23 @@
+"""
+scripts/features.py
+────────────────────
+Stage 3 — Feature Engineering
+
+Loads processed observations, runs every feature extractor,
+applies variance + correlation filters, then exports the
+selected feature dataset to /opt/helioforge/features/.
+
+Run:
+    python scripts/features.py
+"""
+
 from __future__ import annotations
 
 import logging
 import sys
 from pathlib import Path
+
+import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -10,9 +25,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from src.features.feature_pipeline import FeaturePipeline
 from src.features.feature_selector import FeatureSelector
-from src.ingestion.dataset_exporter import DatasetExporter
-from src.ingestion.observation_loader import ObservationLoader
-from src.utils.config import CONFIG, get_path
+from src.pipeline.ingestion.dataset_exporter import DatasetExporter
+from src.pipeline.ingestion.observation_loader import ObservationLoader
+from src.utils.config import CONFIG, PATH_CFG
 
 
 def configure_logging() -> logging.Logger:
@@ -31,9 +46,9 @@ def main() -> int:
     print("=" * 60)
 
     try:
-        processed_directory = get_path("processed")
+        processed_directory = PATH_CFG.preprocessing.processed
         logger.info("Loading observations for feature engineering")
-        print("[STAGE] Loading processed observations")
+        print(f"[STAGE] Loading processed observations from {processed_directory}")
         loader = ObservationLoader(processed_directory)
 
         logger.info("Building feature dataset")
@@ -42,7 +57,10 @@ def main() -> int:
         rows = []
 
         for index, observation in enumerate(loader.load_all(), start=1):
-            print(f"[STAGE] Extracting features for observation {index}: {observation['solexs_id']} / {observation['hel1os_id']}")
+            print(
+                f"[STAGE] Extracting features for observation {index}: "
+                f"{observation['solexs_id']} / {observation['hel1os_id']}"
+            )
             features = pipeline.run(
                 observation["soft_signal"],
                 observation["hard_signal"],
@@ -58,7 +76,11 @@ def main() -> int:
         if not rows:
             raise RuntimeError("No observations were loaded from the processed directories")
 
-        dataframe = __import__("pandas").DataFrame(rows)
+        dataframe = pd.DataFrame(rows)
+
+        ##################################################
+        # FEATURE SELECTION
+        ##################################################
 
         logger.info("Running feature selection pipeline")
         print("[STAGE] Applying variance and correlation filters")
@@ -68,24 +90,18 @@ def main() -> int:
             use_feature_importance=False,
         )
 
+        ##################################################
+        # EXPORT
+        ##################################################
+
         logger.info("Exporting selected features")
-        print("[STAGE] Exporting selected features")
+        print(f"[STAGE] Exporting selected features to {PATH_CFG.features.root}")
 
-        selected_name = f"selected_{CONFIG['exports']['csv']['filename']}"
-        selected_parquet_name = f"selected_{CONFIG['exports']['parquet']['filename']}"
-        selected_excel_name = f"selected_{CONFIG['exports']['excel']['filename']}"
+        exporter = DatasetExporter(PATH_CFG.features.root)
+        exporter.export_all(selected_dataframe)
 
-        csv_exporter = DatasetExporter(Path(CONFIG["exports"]["csv"]["directory"]))
-        csv_exporter.export_csv(selected_dataframe, filename=selected_name)
-
-        parquet_exporter = DatasetExporter(Path(CONFIG["exports"]["parquet"]["directory"]))
-        parquet_exporter.export_parquet(selected_dataframe, filename=selected_parquet_name)
-
-        excel_exporter = DatasetExporter(Path(CONFIG["exports"]["excel"]["directory"]))
-        excel_exporter.export_excel(selected_dataframe, filename=selected_excel_name)
-
-        print(f"[INFO] Original features: {original_features}")
-        print(f"[INFO] After variance filter: {variance_features}")
+        print(f"[INFO] Original features      : {original_features}")
+        print(f"[INFO] After variance filter  : {variance_features}")
         print(f"[INFO] After correlation filter: {correlation_features}")
         print("[SUCCESS] Feature engineering workflow completed successfully")
         return 0

@@ -4,6 +4,8 @@ HELIO-FORGE (SOLAR PRELUDE)
 visualization_pipeline.py
 
 Master visualization pipeline.
+All visualisation modules live in visualizations/ alongside
+this file — imported as siblings.
 ==========================================================
 """
 
@@ -11,29 +13,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.evaluation.feature_count import (
-    FeatureCountPlot,
-)
-
-from src.evaluation.correlation_heatmap import (
-    CorrelationHeatmap,
-)
-
-from src.evaluation.feature_distribution import (
-    FeatureDistribution,
-)
-
-from src.evaluation.missing_values import (
-    MissingValues,
-)
-
-from src.evaluation.feature_selection_summary import (
-    FeatureSelectionSummary,
-)
-
-from src.evaluation.pca_analysis import (
-    PCAAnalysis,
-)
+from correlation_heatmap import CorrelationHeatmap
+from feature_count import FeatureCountPlot
+from feature_distribution import FeatureDistribution
+from feature_selection_summary import FeatureSelectionSummary
+from missing_values import MissingValues
+from pca_analysis import PCAAnalysis
 
 
 class VisualizationPipeline:

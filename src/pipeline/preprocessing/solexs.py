@@ -9,27 +9,27 @@ workflow for SoLEXS observations.
 ==========================================================
 """
 
-from src.preprocessing.config import SOLEXS_DIR
+from src.pipeline.preprocessing.config import SOLEXS_DIR
 
-from src.preprocessing.fits_reader import (
+from src.pipeline.preprocessing.fits_reader import (
     read_lightcurve,
     read_gti_file,
-    read_spectrum
+    read_spectrum,
 )
 
-from src.preprocessing.metadata import (
-    extract_directory_metadata
+from src.pipeline.preprocessing.metadata import (
+    extract_directory_metadata,
 )
 
-from src.preprocessing.validation import (
+from src.pipeline.preprocessing.validation import (
     validate_dataset,
     validate_time_column,
-    validate_numeric_column
+    validate_numeric_column,
 )
 
 from src.utils.preprocessing_utils import (
     print_heading,
-    success
+    success,
 )
 
 

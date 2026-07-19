@@ -1,0 +1,128 @@
+# =============================================================================
+# HelioForge-AI — Dataset & Deployment Path Configuration
+# Target:  EC2 Ubuntu instance
+# Project: SOLAR PRELUDE  |  Architecture: HPINA / Baseline TCN
+#
+# All paths are absolute so the pipeline works regardless of the working
+# directory from which scripts are invoked on the EC2 instance.
+#
+# Usage (Python):
+#   from src.HPINA.configs.paths import PathConfig
+#   cfg = PathConfig.from_yaml("configs/data_paths.yaml")
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Root — change only this line when deploying to a different machine
+# ---------------------------------------------------------------------------
+dataset_root: /opt/helioforge
+
+# ---------------------------------------------------------------------------
+# Stage 1 – Raw Observations
+# Raw FITS files downloaded from SoLEXS / HEL1OS.
+# Never modified after ingestion; treat as read-only.
+# ---------------------------------------------------------------------------
+raw:
+  root:   /opt/helioforge/raw
+  solexs: /opt/helioforge/raw/solexs       # SoLEXS soft X-ray FITS files
+  hel1os: /opt/helioforge/raw/hel1os       # HEL1OS hard X-ray FITS files
+
+# ---------------------------------------------------------------------------
+# Stage 2 – Preprocessing outputs
+# Produced by src/pipeline/preprocessing/  |  scripts/preprocess.py
+# ---------------------------------------------------------------------------
+preprocessing:
+  validated:    /opt/helioforge/preprocessing/validated       # Post-GTI-filter
+  synchronized: /opt/helioforge/preprocessing/synchronized    # SoLEXS–HEL1OS aligned
+  processed:    /opt/helioforge/preprocessing/processed       # Calibrated time series
+
+# ---------------------------------------------------------------------------
+# Stage 3 – Feature Engineering (118 physics-informed features)
+# Produced by src/features/  |  scripts/features.py
+# ---------------------------------------------------------------------------
+features:
+  root:     /opt/helioforge/features
+  csv:      /opt/helioforge/features/selected_features.csv
+  parquet:  /opt/helioforge/features/selected_features.parquet
+  excel:    /opt/helioforge/features/selected_features.xlsx
+
+# ---------------------------------------------------------------------------
+# Stage 4 – Windowed Datasets
+# Sliding-window tensors ready for the TCN DataLoader.
+# Produced by src/HPINA/data/datasets.py
+# ---------------------------------------------------------------------------
+windows:
+  root:  /opt/helioforge/windows
+  train: /opt/helioforge/windows/train.pt
+  val:   /opt/helioforge/windows/val.pt
+  test:  /opt/helioforge/windows/test.pt
+
+# ---------------------------------------------------------------------------
+# Metadata
+# Observatory-level metadata, sync reports, GTI tables.
+# ---------------------------------------------------------------------------
+metadata:
+  root:              /opt/helioforge/metadata
+  solexs_metadata:   /opt/helioforge/metadata/solexs_metadata.csv
+  hel1os_metadata:   /opt/helioforge/metadata/hel1os_metadata.csv
+  sync_report:       /opt/helioforge/metadata/synchronization_report.csv
+  gti_table:         /opt/helioforge/metadata/gti_table.csv
+
+# ---------------------------------------------------------------------------
+# Stage 5 – Model Artefacts
+# Saved weights, ONNX exports, traced models.
+# Organised by HPINA version to support the V1→V7 evolution roadmap.
+# ---------------------------------------------------------------------------
+models:
+  root:         /opt/helioforge/models
+  baseline_tcn: /opt/helioforge/models/baseline_tcn      # V1 – this blueprint
+  multiscale:   /opt/helioforge/models/multiscale_tcn    # V2 (future)
+  dual_stream:  /opt/helioforge/models/dual_stream_tcn   # V3 (future)
+  full_hpina:   /opt/helioforge/models/full_hpina        # V7 (future)
+
+# ---------------------------------------------------------------------------
+# Experiments — checkpoints, runs, ablations
+# Maps to experiments/baseline_tcn/ in the local project tree.
+# ---------------------------------------------------------------------------
+experiments:
+  root:        /opt/helioforge/experiments
+  baseline_tcn:
+    root:        /opt/helioforge/experiments/baseline_tcn
+    runs:        /opt/helioforge/experiments/baseline_tcn/runs          # TensorBoard / WandB
+    checkpoints: /opt/helioforge/experiments/baseline_tcn/checkpoints   # .pt weight files
+    ablations:   /opt/helioforge/experiments/baseline_tcn/ablations     # Ablation sub-runs
+
+# ---------------------------------------------------------------------------
+# Predictions / Inference Outputs
+# ---------------------------------------------------------------------------
+outputs:
+  root:        /opt/helioforge/outputs
+  predictions: /opt/helioforge/outputs/predictions    # Raw model outputs (.csv / .npy)
+  reports:     /opt/helioforge/outputs/reports        # Evaluation reports
+
+# ---------------------------------------------------------------------------
+# Reports & Visualisations
+# Generated by visualizations/  and  src/HPINA/evaluation/
+# ---------------------------------------------------------------------------
+reports:
+  root:    /opt/helioforge/reports
+  figures: /opt/helioforge/reports/figures       # Heatmaps, PCA plots, distributions
+  tables:  /opt/helioforge/reports/tables        # CSV summaries, confusion matrices
+
+# ---------------------------------------------------------------------------
+# Logs
+# Training logs, pipeline logs, error traces.
+# ---------------------------------------------------------------------------
+logs:
+  root:       /opt/helioforge/logs
+  pipeline:   /opt/helioforge/logs/pipeline.log      # Ingestion / preprocessing
+  training:   /opt/helioforge/logs/training.log      # Epoch-level training log
+  evaluation: /opt/helioforge/logs/evaluation.log    # Metric computation log
+  errors:     /opt/helioforge/logs/errors.log        # Exception traces
+
+# ---------------------------------------------------------------------------
+# Normalisation statistics
+# Computed from the training split; applied unchanged to val/test.
+# Stored as JSON to be reloaded at inference time.
+# ---------------------------------------------------------------------------
+normalisation:
+  stats_json: /opt/helioforge/features/normalisation_stats.json

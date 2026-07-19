@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.utils.config import CONFIG, get_path
+from src.utils.config import PATH_CFG
 from src.utils.preprocessing_utils import (
     print_heading,
     success,
-    save_dataframe
+    save_dataframe,
 )
 
 
@@ -100,7 +100,11 @@ def save_synchronization_report(report_df, output_path=None):
     Save synchronization report.
     """
 
-    output_path = Path(output_path) if output_path is not None else Path(CONFIG["files"]["synchronization_report"])
+    output_path = (
+        Path(output_path)
+        if output_path is not None
+        else PATH_CFG.metadata.sync_report
+    )
     save_dataframe(report_df, output_path)
 
     success("Synchronization report saved.")

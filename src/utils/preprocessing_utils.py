@@ -13,7 +13,7 @@ from astropy.io import fits
 import pandas as pd
 import numpy as np
 
-from src.utils.config import get_path
+# Path resolution is handled by src.utils.config — not needed here
 
 
 # ==========================================================

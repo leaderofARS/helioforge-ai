@@ -13,7 +13,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.utils.config import CONFIG, get_path
+from src.utils.config import PATH_CFG
+
+# Observation-level filenames (these are fixed FITS-derived CSV names)
+_LIGHTCURVE_FILENAME = "lightcurve.csv"
+_EVENT_FILENAME      = "event.csv"
 
 
 class ObservationLoader:
@@ -26,9 +30,11 @@ class ObservationLoader:
         processed_directory: str | Path,
     ) -> None:
 
-        self.processed_directory = Path(
-            processed_directory
-        ) if processed_directory is not None else get_path("processed")
+        self.processed_directory = (
+            Path(processed_directory)
+            if processed_directory is not None
+            else PATH_CFG.preprocessing.processed
+        )
 
     ##################################################
     # LOAD SINGLE OBSERVATION
@@ -47,9 +53,9 @@ class ObservationLoader:
         # SOLEXS
         ##################################################
 
-        lightcurve_path = solexs_folder / CONFIG["files"]["observation_lightcurve"]
+        lightcurve_path = solexs_folder / _LIGHTCURVE_FILENAME
         if not lightcurve_path.exists():
-            candidate = solexs_folder / Path(CONFIG["files"]["observation_lightcurve"]).name
+            candidate = solexs_folder / Path(_LIGHTCURVE_FILENAME).name
             if candidate.exists():
                 lightcurve_path = candidate
 
@@ -59,9 +65,9 @@ class ObservationLoader:
         # HEL1OS
         ##################################################
 
-        event_path = hel1os_folder / CONFIG["files"]["observation_event"]
+        event_path = hel1os_folder / _EVENT_FILENAME
         if not event_path.exists():
-            candidate = hel1os_folder / Path(CONFIG["files"]["observation_event"]).name
+            candidate = hel1os_folder / Path(_EVENT_FILENAME).name
             if candidate.exists():
                 event_path = candidate
 

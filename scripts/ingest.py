@@ -1,3 +1,16 @@
+"""
+scripts/ingest.py
+──────────────────
+Stage 3 — Ingestion (Processed → ML Dataset)
+
+Loads processed observations from /opt/helioforge/preprocessing/processed,
+extracts features via FeaturePipeline, and exports the ML-ready dataset
+to /opt/helioforge/features/.
+
+Run:
+    python scripts/ingest.py
+"""
+
 from __future__ import annotations
 
 import logging
@@ -8,10 +21,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.ingestion.dataset_builder import DatasetBuilder
-from src.ingestion.dataset_exporter import DatasetExporter
-from src.ingestion.observation_loader import ObservationLoader
-from src.utils.config import CONFIG, get_path
+from src.pipeline.ingestion.dataset_builder import DatasetBuilder
+from src.pipeline.ingestion.dataset_exporter import DatasetExporter
+from src.pipeline.ingestion.observation_loader import ObservationLoader
+from src.utils.config import CONFIG, PATH_CFG
 
 
 def configure_logging() -> logging.Logger:
@@ -30,9 +43,9 @@ def main() -> int:
     print("=" * 60)
 
     try:
-        processed_directory = get_path("processed")
+        processed_directory = PATH_CFG.preprocessing.processed
         logger.info("Loading processed observations from %s", processed_directory)
-        print("[STAGE] Loading processed observations")
+        print(f"[STAGE] Loading processed observations from {processed_directory}")
         loader = ObservationLoader(processed_directory)
 
         logger.info("Building dataset from observations")
@@ -40,7 +53,10 @@ def main() -> int:
         builder = DatasetBuilder()
 
         for index, observation in enumerate(loader.load_all(), start=1):
-            print(f"[STAGE] Processing observation {index}: {observation['solexs_id']} / {observation['hel1os_id']}")
+            print(
+                f"[STAGE] Processing observation {index}: "
+                f"{observation['solexs_id']} / {observation['hel1os_id']}"
+            )
             builder.add_sample(
                 observation["soft_signal"],
                 observation["hard_signal"],
@@ -57,14 +73,9 @@ def main() -> int:
         logger.info("Exporting dataset to configured output formats")
         print("[STAGE] Exporting dataset")
 
-        csv_exporter = DatasetExporter(Path(CONFIG["exports"]["csv"]["directory"]))
-        csv_exporter.export_csv(dataset)
-
-        parquet_exporter = DatasetExporter(Path(CONFIG["exports"]["parquet"]["directory"]))
-        parquet_exporter.export_parquet(dataset)
-
-        excel_exporter = DatasetExporter(Path(CONFIG["exports"]["excel"]["directory"]))
-        excel_exporter.export_excel(dataset)
+        # All three formats go to the same features root directory
+        exporter = DatasetExporter(PATH_CFG.features.root)
+        exporter.export_all(dataset)
 
         print("[SUCCESS] Ingestion workflow completed successfully")
         return 0

@@ -25,7 +25,12 @@ from openpyxl.styles import (
 
 from openpyxl.utils import get_column_letter
 
-from src.utils.config import CONFIG, get_path
+from src.utils.config import PATH_CFG
+
+# Export filenames — match data_paths.yaml features section
+_CSV_FILENAME     = "selected_features.csv"
+_PARQUET_FILENAME = "selected_features.parquet"
+_EXCEL_FILENAME   = "selected_features.xlsx"
 
 
 class DatasetExporter:
@@ -44,7 +49,11 @@ class DatasetExporter:
         output_directory: str | Path,
     ) -> None:
 
-        self.output_directory = Path(output_directory) if output_directory is not None else get_path("features")
+        self.output_directory = (
+            Path(output_directory)
+            if output_directory is not None
+            else PATH_CFG.features.root
+        )
 
         self.output_directory.mkdir(
             parents=True,
@@ -160,7 +169,7 @@ class DatasetExporter:
         Export dataset to CSV.
         """
 
-        resolved_filename = filename or CONFIG["exports"]["csv"]["filename"]
+        resolved_filename = filename or _CSV_FILENAME
         output_file = self.output_directory / resolved_filename
 
         dataframe.to_csv(
@@ -183,7 +192,7 @@ class DatasetExporter:
         Export dataset to Parquet.
         """
 
-        resolved_filename = filename or CONFIG["exports"]["parquet"]["filename"]
+        resolved_filename = filename or _PARQUET_FILENAME
         output_file = self.output_directory / resolved_filename
 
         dataframe.to_parquet(
@@ -206,7 +215,7 @@ class DatasetExporter:
         Export dataset as a professional Excel workbook.
         """
 
-        resolved_filename = filename or CONFIG["exports"]["excel"]["filename"]
+        resolved_filename = filename or _EXCEL_FILENAME
         output_file = self.output_directory / resolved_filename
 
         with pd.ExcelWriter(

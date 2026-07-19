@@ -9,27 +9,27 @@ workflow for HEL1OS observations.
 ==========================================================
 """
 
-from src.preprocessing.config import HEL1OS_DIR
+from src.pipeline.preprocessing.config import HEL1OS_DIR
 
-from src.preprocessing.fits_reader import (
+from src.pipeline.preprocessing.fits_reader import (
     read_event_file,
     read_gti_file,
-    read_housekeeping_file
+    read_housekeeping_file,
 )
 
-from src.preprocessing.metadata import (
-    extract_directory_metadata
+from src.pipeline.preprocessing.metadata import (
+    extract_directory_metadata,
 )
 
-from src.preprocessing.validation import (
+from src.pipeline.preprocessing.validation import (
     validate_dataset,
     validate_time_column,
-    validate_negative_values
+    validate_negative_values,
 )
 
 from src.utils.preprocessing_utils import (
     print_heading,
-    success
+    success,
 )
 
 

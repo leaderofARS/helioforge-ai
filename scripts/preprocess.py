@@ -1,3 +1,16 @@
+"""
+scripts/preprocess.py
+──────────────────────
+Stage 1 & 2 — Raw FITS → Preprocessing
+
+Runs the complete HEL1OS and SoLEXS preprocessing pipelines,
+saves metadata CSVs to /opt/helioforge/metadata/, and writes
+the synchronization report.
+
+Run:
+    python scripts/preprocess.py
+"""
+
 from __future__ import annotations
 
 import logging
@@ -8,10 +21,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.preprocessing.hel1os import process_hel1os
-from src.preprocessing.solexs import process_solexs
-from src.preprocessing.synchronization import save_synchronization_report, synchronize_datasets
-from src.utils.config import CONFIG
+from src.pipeline.preprocessing.hel1os import process_hel1os
+from src.pipeline.preprocessing.solexs import process_solexs
+from src.pipeline.preprocessing.synchronization import (
+    save_synchronization_report,
+    synchronize_datasets,
+)
+from src.utils.config import CONFIG, PATH_CFG
 
 
 def configure_logging() -> logging.Logger:
@@ -38,21 +54,32 @@ def main() -> int:
         print("[STAGE] Running SoLEXS preprocessing")
         solexs_data = process_solexs()
 
+        ##################################################
+        # SAVE METADATA
+        ##################################################
+
         logger.info("Saving metadata outputs")
         print("[STAGE] Saving generated metadata")
 
-        hel1os_metadata_path = Path(CONFIG["files"]["hel1os_metadata"])
+        hel1os_metadata_path = PATH_CFG.metadata.hel1os_metadata
         hel1os_metadata_path.parent.mkdir(parents=True, exist_ok=True)
         hel1os_data["metadata"].to_csv(hel1os_metadata_path, index=False)
+        print(f"[INFO] HEL1OS metadata saved → {hel1os_metadata_path}")
 
-        solexs_metadata_path = Path(CONFIG["files"]["solexs_metadata"])
+        solexs_metadata_path = PATH_CFG.metadata.solexs_metadata
         solexs_metadata_path.parent.mkdir(parents=True, exist_ok=True)
         solexs_data["metadata"].to_csv(solexs_metadata_path, index=False)
+        print(f"[INFO] SoLEXS metadata saved → {solexs_metadata_path}")
+
+        ##################################################
+        # SYNCHRONIZE
+        ##################################################
 
         logger.info("Synchronizing observations")
         print("[STAGE] Synchronizing HEL1OS and SoLEXS observations")
         report_df = synchronize_datasets(hel1os_data, solexs_data)
         save_synchronization_report(report_df)
+        print(f"[INFO] Sync report saved → {PATH_CFG.metadata.sync_report}")
 
         print("[SUCCESS] Preprocessing workflow completed successfully")
         return 0
