@@ -57,13 +57,20 @@ def main() -> int:
                 f"[STAGE] Processing observation {index}: "
                 f"{observation['solexs_id']} / {observation['hel1os_id']}"
             )
-            builder.add_sample(
-                observation["soft_signal"],
-                observation["hard_signal"],
-                observation["timestamps"],
-                observation["solexs_id"],
-                observation["hel1os_id"],
-            )
+            try:
+                builder.add_sample(
+                    observation["soft_signal"],
+                    observation["hard_signal"],
+                    observation["timestamps"],
+                    observation["solexs_id"],
+                    observation["hel1os_id"],
+                )
+            except Exception as exc:
+                print(
+                    f"[WARNING] Skipping ingestion sample {index} "
+                    f"({observation['solexs_id']} / {observation['hel1os_id']}): {exc}"
+                )
+                continue
 
         if not builder.rows:
             raise RuntimeError("No observations were loaded from the processed directories")
