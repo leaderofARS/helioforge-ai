@@ -126,51 +126,27 @@ class ObservationLoader:
     # LOAD ALL OBSERVATIONS
     ##################################################
 
-    def load_all(
-        self,
-    ):
+    def load_all(self):
+        solexs_root = self.processed_directory / "solexs"
+        hel1os_root = self.processed_directory / "hel1os"
 
-        solexs_root = (
-            self.processed_directory
-            / "solexs"
-        )
-
-        hel1os_root = (
-            self.processed_directory
-            / "hel1os"
-        )
-
-        solexs_folders = sorted(
-            [
-                folder
-
-                for folder in solexs_root.iterdir()
-
-                if folder.is_dir()
-
-            ]
-        )
-
-        hel1os_folders = sorted(
-            [
-                folder
-
-                for folder in hel1os_root.iterdir()
-
-                if folder.is_dir()
-
-            ]
-        )
-
-        for hel_folder in hel1os_folders:
-
-            # Reuse first SoLEXS folder for now
-            # until observation pairing is implemented.
-
-            yield self.load(
-
-                solexs_folders[0],
-
-                hel_folder,
-
+        if not solexs_root.exists() or not hel1os_root.exists():
+            raise FileNotFoundError(
+                f"Processed observation folders missing under {self.processed_directory}.\n"
+                f"Expected: {solexs_root} and {hel1os_root}\n"
+                "Please run Stage 1 preprocessing (preprocess.py) first."
             )
+
+        solexs_folders = sorted([f for f in solexs_root.iterdir() if f.is_dir()])
+        hel1os_folders = sorted([f for f in hel1os_root.iterdir() if f.is_dir()])
+
+        if not solexs_folders or not hel1os_folders:
+            raise RuntimeError(
+                f"No processed observation directories found in {solexs_root} or {hel1os_root}.\n"
+                "Please run Stage 1 preprocessing (preprocess.py) first."
+            )
+
+        # Pair observations by index up to available count
+        n_pairs = min(len(solexs_folders), len(hel1os_folders))
+        for i in range(n_pairs):
+            yield self.load(solexs_folders[i], hel1os_folders[i])

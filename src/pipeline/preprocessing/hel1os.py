@@ -154,10 +154,13 @@ def locate_hel1os_files():
 import gc
 
 
+from src.pipeline.preprocessing.config import HEL1OS_DIR, PROCESSED_DIR
+
+
 def load_and_validate_hel1os(observations):
     """
     Stream each HEL1OS observation: load, validate, extract window bounds,
-    and free DataFrames immediately to conserve RAM.
+    save processed event.csv to PROCESSED_DIR, and free DataFrames.
     """
     print_heading("Loading & Validating HEL1OS Datasets")
 
@@ -179,6 +182,11 @@ def load_and_validate_hel1os(observations):
 
             validate_dataset(hk_df)
             validate_time_column(hk_df, "mjd")
+
+            # Save processed event.csv for Stage 3 (Features/Ingest)
+            out_dir = PROCESSED_DIR / "hel1os" / observation_name
+            out_dir.mkdir(parents=True, exist_ok=True)
+            event_df.to_csv(out_dir / "event.csv", index=False)
 
             # Extract window bounds and stats
             summary_records.append({

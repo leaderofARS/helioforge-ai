@@ -140,10 +140,13 @@ def locate_solexs_files():
 import gc
 
 
+from src.pipeline.preprocessing.config import PROCESSED_DIR, SOLEXS_DIR
+
+
 def load_and_validate_solexs(observations):
     """
     Stream each SoLEXS observation: load, validate, extract window bounds,
-    and free DataFrames immediately to conserve RAM.
+    save processed lightcurve.csv to PROCESSED_DIR, and free DataFrames.
     """
     print_heading("Loading & Validating SoLEXS Datasets")
 
@@ -165,6 +168,11 @@ def load_and_validate_solexs(observations):
 
             validate_dataset(gti_df)
             validate_time_column(gti_df, "START")
+
+            # Save processed lightcurve.csv for Stage 3 (Features/Ingest)
+            out_dir = PROCESSED_DIR / "solexs" / observation_name
+            out_dir.mkdir(parents=True, exist_ok=True)
+            lc_df.to_csv(out_dir / "lightcurve.csv", index=False)
 
             # Extract window bounds and stats
             summary_records.append({
