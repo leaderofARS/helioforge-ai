@@ -117,10 +117,13 @@ def main() -> int:
 
         all_dfs = []
         skipped = 0
+        total_len = 0
 
         for idx, obs in enumerate(loader.load_all(), start=1):
             obs_id = f"{obs['solexs_id']}/{obs['hel1os_id']}"
-            print(f"  [{idx:>4}] Processing: {obs_id}")
+            t_len = len(obs["soft_signal"])
+            total_len += t_len
+            print(f"  [{idx:>4}] Processing: {obs_id} (T={t_len})")
 
             try:
                 df = extractor.extract(

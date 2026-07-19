@@ -308,8 +308,14 @@ class RollingFeatureExtractor:
         T = len(soft_signal)
         if T < self.context_seconds:
             logger.warning(
-                "Observation too short (%d samples < context %d). Skipping.",
-                T, self.context_seconds
+                "Observation too short: T=%d samples < context=%d seconds. "
+                "Either this observation is genuinely short, or run with "
+                "--context %d to process it.",
+                T, self.context_seconds, max(T // 2, 2)
+            )
+            print(
+                f"         → SKIP (T={T} samples < context={self.context_seconds}s — "
+                f"try --context {max(T // 2, 2)})"
             )
             return pd.DataFrame()
 
