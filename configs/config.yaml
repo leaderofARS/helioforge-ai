@@ -1,0 +1,52 @@
+project:
+  name: helioforge-ai
+  version: 1.0.0
+
+paths:
+  project_root: .
+  data: data
+  raw: data/raw
+  processed: data/processed
+  hel1os: data/raw/hel1os
+  solexs: data/raw/solexs
+  metadata: data/metadata
+  features: data/features
+  reports: reports
+  visualizations: data/visualizations
+  distributions: data/visualizations/distributions
+  models: models
+  docs: docs
+
+exports:
+  csv:
+    directory: data/features
+    filename: features.csv
+  parquet:
+    directory: data/features
+    filename: features.parquet
+  excel:
+    directory: data/features
+    filename: features.xlsx
+
+files:
+  hel1os_metadata: data/metadata/hel1os_metadata.csv
+  solexs_metadata: data/metadata/solexs_metadata.csv
+  observation_lightcurve: lightcurve.csv
+  observation_event: event.csv
+  synchronization_report: reports/synchronization_report.csv
+  feature_selection_summary_csv: feature_selection_summary.csv
+  feature_selection_summary_png: feature_selection_summary.png
+  missing_values_csv: missing_values.csv
+  missing_values_png: missing_values.png
+  pca_summary_csv: pca_summary.csv
+  pca_explained_variance_png: pca_explained_variance.png
+  pca_cumulative_variance_png: pca_cumulative_variance.png
+  pca_projection_png: pca_projection.png
+  feature_count_png: feature_count.png
+  correlation_matrix_csv: correlation.csv
+  correlation_heatmap_png: heatmap.png
+  top_correlations_csv: top_correlations.csv
+  distribution_png: distribution.png
+
+logging:
+  level: INFO

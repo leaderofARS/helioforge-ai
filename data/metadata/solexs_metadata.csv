@@ -1,0 +1,5 @@
+Filename,File Type,File Size (MB),Total HDUs,Instrument,Telescope,Observation Date,Object,Creator
+AL1_SOLEXS_20240403_SDD1_L1.gti,.gti,0.01,2,SoLEXS,AL1,N/A,N/A,solexs_pipeline-1.4
+AL1_SOLEXS_20240403_SDD2_L1.gti,.gti,0.01,2,SoLEXS,AL1,N/A,N/A,solexs_pipeline-1.4
+AL1_SOLEXS_20240403_SDD2_L1.lc,.lc,1.33,2,SoLEXS,AL1,N/A,N/A,solexs_pipeline-1.4
+AL1_SOLEXS_20240403_SDD2_L1.pi,.pi,450.56,2,SoLEXS,AL1,N/A,N/A,solexs_pipeline-1.4

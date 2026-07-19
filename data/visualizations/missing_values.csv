@@ -1,0 +1,10 @@
+Feature,Missing Values,Missing Percentage
+solexs_observation_id,0,0.0
+hel1os_observation_id,0,0.0
+soft_mean,0,0.0
+soft_max,0,0.0
+soft_std,0,0.0
+soft_rms,0,0.0
+soft_skewness,0,0.0
+soft_signal_energy,0,0.0
+hard_rise_rate,0,0.0
