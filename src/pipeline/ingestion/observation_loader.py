@@ -74,53 +74,118 @@ class ObservationLoader:
         event = pd.read_csv(event_path)
 
         ##################################################
-        # BUILD ARRAYS
+        # BUILD ARRAYS — SoLEXS (already 1 Hz)
         ##################################################
 
-        timestamps = lightcurve[
-            "TIME"
-        ].to_numpy(
-            dtype=float
-        )
+        timestamps  = lightcurve["TIME"].to_numpy(dtype=float)
+        soft_signal = lightcurve["COUNTS"].to_numpy(dtype=float)
 
-        soft_signal = lightcurve[
-            "COUNTS"
-        ].to_numpy(
-            dtype=float
-        )
+        ##################################################
+        # BUILD ARRAYS — HEL1OS (photon events → 1 Hz)
+        #
+        # event.csv has one row per detected photon:
+        #   mjd  : Modified Julian Date of detection
+        #   ener : photon energy in keV
+        #
+        # SoLEXS TIME is in mission seconds (ISRO clock).
+        # We cannot convert MJD ↔ mission seconds without the
+        # exact epoch from the FITS header, so we align both
+        # signals by RELATIVE time:
+        #
+        #   soft_rel[i] = TIME[i] - TIME[0]   (seconds from obs start)
+        #   hard_rel[j] = (mjd[j] - mjd[0]) * 86400
+        #
+        # Then we bin photon energies into the same 1-second
+        # integer bins as soft_rel, producing a 1-Hz hard signal
+        # of identical length to soft_signal.
+        ##################################################
 
-        # Temporary hard signal
-        hard_signal = event[
-            "ener"
-        ].to_numpy(
-            dtype=float
+        hard_signal = self._bin_events_to_1hz(
+            event_mjd=event["mjd"].to_numpy(dtype=float),
+            event_ener=event["ener"].to_numpy(dtype=float),
+            soft_timestamps=timestamps,
         )
 
         ##################################################
-        # MATCH LENGTHS
+        # FINAL RETURN — lengths guaranteed equal
         ##################################################
 
-        n = min(
-
-            len(timestamps),
-
-            len(soft_signal),
-
-            len(hard_signal),
-
-        )
+        n = len(timestamps)   # soft and hard are already matched
 
         return {
-            "solexs_id": solexs_folder.name,
-            "hel1os_id": hel1os_folder.name,
-
-            "timestamps": timestamps[:n],
-
+            "solexs_id":   solexs_folder.name,
+            "hel1os_id":   hel1os_folder.name,
+            "timestamps":  timestamps[:n],
             "soft_signal": soft_signal[:n],
-
             "hard_signal": hard_signal[:n],
-
         }
+
+    # ------------------------------------------------------------------
+    # HEL1OS event binning helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _bin_events_to_1hz(
+        event_mjd: "np.ndarray",
+        event_ener: "np.ndarray",
+        soft_timestamps: "np.ndarray",
+    ) -> "np.ndarray":
+        """
+        Bin HEL1OS photon events into the same 1-second time grid as
+        the SoLEXS lightcurve.
+
+        Strategy (epoch-free)
+        ─────────────────────
+        1. Convert both time axes to relative seconds from their own start:
+               soft_rel[i] = TIME[i] - TIME[0]
+               hard_rel[j] = (mjd[j] - mjd[0]) * 86400
+        2. Compute the mean photon energy in each 1-second integer bin
+           that aligns with soft_rel.  Bins with no events get 0.0.
+        3. Return an array of the same length as soft_timestamps.
+
+        Parameters
+        ----------
+        event_mjd       : (M,) photon detection times in MJD
+        event_ener      : (M,) photon energies in keV
+        soft_timestamps : (T,) SoLEXS TIME in mission seconds
+
+        Returns
+        -------
+        hard_signal : (T,) mean keV per 1-second bin, aligned to soft_timestamps
+        """
+        T = len(soft_timestamps)
+
+        if len(event_mjd) == 0:
+            return np.zeros(T, dtype=np.float32)
+
+        # Relative seconds
+        soft_rel  = soft_timestamps - soft_timestamps[0]          # (T,)
+        hard_secs = (event_mjd - event_mjd[0]) * 86400.0          # (M,)
+
+        # Duration of the HEL1OS observation in relative seconds
+        hard_duration = float(hard_secs[-1] - hard_secs[0]) if len(hard_secs) > 1 else 0.0
+        soft_duration = float(soft_rel[-1]) if T > 1 else 0.0
+
+        # Scale hard relative time to match soft duration
+        # (compensates for any clock-rate differences between the two instruments)
+        if hard_duration > 1.0 and soft_duration > 1.0:
+            hard_secs = hard_secs * (soft_duration / hard_duration)
+
+        # Bin photon energies into integer-second bins [0, T)
+        bin_indices = np.floor(hard_secs).astype(np.int64)
+        valid_mask  = (bin_indices >= 0) & (bin_indices < T)
+        bin_indices = bin_indices[valid_mask]
+        bin_ener    = event_ener[valid_mask]
+
+        # Sum energy per bin then divide by count (mean keV/s)
+        hard_sum   = np.bincount(bin_indices, weights=bin_ener,  minlength=T)
+        hard_count = np.bincount(bin_indices,                    minlength=T).astype(float)
+        hard_count[hard_count == 0] = 1.0        # avoid division by zero
+
+        hard_signal = (hard_sum / hard_count).astype(np.float32)
+        return hard_signal
+
+
 
     ##################################################
     # LOAD ALL OBSERVATIONS

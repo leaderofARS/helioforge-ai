@@ -56,9 +56,34 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
-from scipy.stats import kurtosis, skew
 
 logger = logging.getLogger("helioforge.features.rolling")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper: fast numpy skew / kurtosis (no scipy overhead per call)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _skew_np(x: np.ndarray) -> float:
+    """Fisher skewness — matches scipy.stats.skew(bias=True)."""
+    if len(x) < 3:
+        return 0.0
+    mu = np.mean(x)
+    std = np.std(x)
+    if std < 1e-12:
+        return 0.0
+    return float(np.mean(((x - mu) / std) ** 3))
+
+
+def _kurt_np(x: np.ndarray) -> float:
+    """Excess kurtosis — matches scipy.stats.kurtosis(fisher=True)."""
+    if len(x) < 4:
+        return 0.0
+    mu = np.mean(x)
+    std = np.std(x)
+    if std < 1e-12:
+        return 0.0
+    return float(np.mean(((x - mu) / std) ** 4)) - 3.0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,8 +175,8 @@ def _extract_window_features(
     feat["soft_max"]             = float(np.max(s))
     feat["soft_std"]             = float(np.std(s))
     feat["soft_rms"]             = float(np.sqrt(np.mean(s ** 2)))
-    feat["soft_skewness"]        = float(skew(s))       if len(s) > 2 else 0.0
-    feat["soft_kurtosis"]        = float(kurtosis(s))   if len(s) > 2 else 0.0
+    feat["soft_skewness"]        = _skew_np(s)
+    feat["soft_kurtosis"]        = _kurt_np(s)
     feat["soft_signal_energy"]   = float(np.sum(s ** 2))
     feat["soft_integrated_flux"] = float(np.trapz(s, ts_w))
 
@@ -173,8 +198,8 @@ def _extract_window_features(
     feat["hard_max"]             = float(np.max(h))
     feat["hard_std"]             = float(np.std(h))
     feat["hard_rms"]             = float(np.sqrt(np.mean(h ** 2)))
-    feat["hard_skewness"]        = float(skew(h))       if len(h) > 2 else 0.0
-    feat["hard_kurtosis"]        = float(kurtosis(h))   if len(h) > 2 else 0.0
+    feat["hard_skewness"]        = _skew_np(h)
+    feat["hard_kurtosis"]        = _kurt_np(h)
     feat["hard_signal_energy"]   = float(np.sum(h ** 2))
     feat["hard_integrated_flux"] = float(np.trapz(h, ts_w))
 
