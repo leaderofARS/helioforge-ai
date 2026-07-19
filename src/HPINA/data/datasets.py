@@ -89,12 +89,19 @@ class WindowGenerator:
         if length < self.window_size:
             return np.empty((0, 2, self.window_size), dtype=np.float32)
 
-        # Min-Max Normalize signals per observation to [0, 1] range safely
-        s_min, s_max = np.min(soft_signal[:length]), np.max(soft_signal[:length])
-        h_min, h_max = np.min(hard_signal[:length]), np.max(hard_signal[:length])
+        # Replace NaNs/Infs with 0.0 before min-max scaling
+        soft_clean = np.nan_to_num(soft_signal[:length], nan=0.0, posinf=0.0, neginf=0.0)
+        hard_clean = np.nan_to_num(hard_signal[:length], nan=0.0, posinf=0.0, neginf=0.0)
 
-        s_norm = (soft_signal[:length] - s_min) / (s_max - s_min + 1e-8)
-        h_norm = (hard_signal[:length] - h_min) / (h_max - h_min + 1e-8)
+        # Safe Min-Max Normalization per observation
+        s_min, s_max = np.min(soft_clean), np.max(soft_clean)
+        h_min, h_max = np.min(hard_clean), np.max(hard_clean)
+
+        s_range = s_max - s_min if (s_max - s_min) > 1e-8 else 1.0
+        h_range = h_max - h_min if (h_max - h_min) > 1e-8 else 1.0
+
+        s_norm = (soft_clean - s_min) / s_range
+        h_norm = (hard_clean - h_min) / h_range
 
         # Stack into (2, length) matrix
         stacked = np.vstack([s_norm, h_norm]).astype(np.float32)
@@ -103,7 +110,9 @@ class WindowGenerator:
         for start in range(0, length - self.window_size + 1, self.stride):
             end = start + self.window_size
             window = stacked[:, start:end]
-            windows.append(window)
+            # Verify window contains no NaNs or Infs
+            if not np.isnan(window).any() and not np.isinf(window).any():
+                windows.append(window)
 
         if not windows:
             return np.empty((0, 2, self.window_size), dtype=np.float32)
