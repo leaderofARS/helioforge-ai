@@ -87,7 +87,9 @@ _FILE_MAP: dict[str, Path] = {
     "pca_explained_variance_png":    Path("pca_explained_variance.png"),
     "pca_cumulative_variance_png":   Path("pca_cumulative_variance.png"),
     "pca_projection_png":            Path("pca_projection.png"),
+    "correlation_matrix_csv":        Path("correlation_matrix.csv"),
     "correlation_heatmap_png":       Path("correlation_heatmap.png"),
+    "top_correlations_csv":          Path("top_correlations.csv"),
 }
 
 # ─── Export aliases ──────────────────────────────────────────────────────────
