@@ -53,10 +53,12 @@ _PATH_MAP: dict[str, Path] = {
     # outputs
     "outputs":        PATH_CFG.outputs.root,
     "predictions":    PATH_CFG.outputs.predictions,
-    # reports
+    # reports & figures
     "reports":        PATH_CFG.reports.root,
     "figures":        PATH_CFG.reports.figures,
     "tables":         PATH_CFG.reports.tables,
+    "visualizations": PATH_CFG.reports.figures,
+    "distributions":  PATH_CFG.reports.figures / "distributions",
     # logs
     "logs":           PATH_CFG.logs.root,
 }
