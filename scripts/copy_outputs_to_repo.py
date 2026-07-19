@@ -72,11 +72,11 @@ def main() -> int:
         description="Evaluation Reports & Figures",
     )
 
-    # Copy processed observation CSVs (excluding raw FITS)
+    # Copy window tensors (.pt)
     copy_directory(
-        src=PATH_CFG.preprocessing.processed,
-        dst=REPO_ROOT / "data" / "preprocessing" / "processed",
-        description="Processed Observation CSVs (lightcurve & event)",
+        src=PATH_CFG.windows.root,
+        dst=REPO_ROOT / "data" / "windows",
+        description="Sliding Window Sequence Tensors (train.pt, val.pt, test.pt)",
     )
 
     print("=" * 60)
