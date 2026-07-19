@@ -134,74 +134,57 @@ def locate_solexs_files():
 
 
 # ==========================================================
-# Load SoLEXS Datasets
+# Stream & Validate SoLEXS Datasets (Memory Efficient)
 # ==========================================================
 
-def load_solexs(observations):
-    """
-    Load all SoLEXS observations.
-    """
+import gc
 
-    print_heading("Loading SoLEXS Datasets")
 
-    datasets = []
+def load_and_validate_solexs(observations):
+    """
+    Stream each SoLEXS observation: load, validate, extract window bounds,
+    and free DataFrames immediately to conserve RAM.
+    """
+    print_heading("Loading & Validating SoLEXS Datasets")
+
+    summary_records = []
 
     for i, obs in enumerate(observations, start=1):
-
         observation_name = obs["lightcurve"].parent.parent.name
-        print(f"\nLoading Observation {i}: {observation_name}")
+        print(f"\nProcessing Observation {i}/{len(observations)}: {observation_name}")
 
         lc_df = read_lightcurve(obs["lightcurve"])
         gti_df = read_gti_file(obs["gti"])
         spectrum_df = read_spectrum(obs["spectrum"])
 
-        datasets.append({
-            "name": observation_name,
-            "path": obs["lightcurve"].parent.parent,
-            "lightcurve": lc_df,
-            "gti": gti_df,
-            "spectrum": spectrum_df
-        })
-
-    print("\n--------------------------------------------")
-    print(f"Loaded {len(datasets)} SoLEXS observations.")
-    print("--------------------------------------------")
-
-    success("SoLEXS datasets loaded successfully.")
-
-    return datasets
-        
-
-# ==========================================================
-# Validate SoLEXS Datasets
-# ==========================================================
-
-def validate_solexs(datasets):
-    """
-    Validate every SoLEXS observation.
-    """
-
-    print_heading("Validating SoLEXS Datasets")
-
-    for i, dataset in enumerate(datasets, start=1):
-
-        print(f"\nValidating {dataset['name']}")
-
-        lc_df = dataset["lightcurve"]
-        gti_df = dataset["gti"]
-
-        print("\nLight Curve Validation")
-
+        # Validate
         validate_dataset(lc_df)
         validate_time_column(lc_df, "TIME")
         validate_numeric_column(lc_df, "COUNTS")
 
-        print("\nGTI Validation")
-
         validate_dataset(gti_df)
         validate_time_column(gti_df, "START")
 
-    success("SoLEXS validation completed.")
+        # Extract window bounds and stats
+        summary_records.append({
+            "name": observation_name,
+            "path": obs["lightcurve"].parent.parent,
+            "lc_start_time": lc_df["TIME"].min() if not lc_df.empty else 0.0,
+            "lc_end_time": lc_df["TIME"].max() if not lc_df.empty else 0.0,
+            "gti_start_time": gti_df["START"].min() if not gti_df.empty else 0.0,
+            "gti_end_time": gti_df["STOP"].max() if not gti_df.empty else 0.0,
+            "num_lc": len(lc_df),
+            "num_gti": len(gti_df),
+            "num_spectrum": len(spectrum_df),
+        })
+
+        # Explicitly free memory
+        del lc_df, gti_df, spectrum_df
+        gc.collect()
+
+    success("SoLEXS datasets loaded and validated successfully.")
+    return summary_records
+
 
 # ==========================================================
 # Extract SoLEXS Metadata
@@ -211,25 +194,13 @@ def extract_solexs_metadata():
     """
     Extract metadata from all SoLEXS scientific files.
     """
-
     print_heading("Extracting SoLEXS Metadata")
 
-    patterns = [
-        "*.gti",
-        "*.lc",
-        "*.pi"
-    ]
+    patterns = ["*.gti", "*.lc", "*.pi"]
+    metadata_df = extract_directory_metadata(SOLEXS_DIR, patterns)
 
-    metadata_df = extract_directory_metadata(
-        SOLEXS_DIR,
-        patterns
-    )
-
-    print()
-    print(metadata_df)
-
+    print(f"\nMetadata records extracted: {len(metadata_df)}")
     success("SoLEXS metadata extracted successfully.")
-
     return metadata_df
 
 
@@ -237,25 +208,25 @@ def extract_solexs_metadata():
 # SoLEXS Scientific Summary
 # ==========================================================
 
-def solexs_summary(datasets, metadata_df):
+def solexs_summary(summary_records, metadata_df):
     """
     Display preprocessing summary.
     """
-
     print_heading("SoLEXS Scientific Summary")
 
-    print(f"Observations Processed : {len(datasets)}")
+    print(f"Observations Processed : {len(summary_records)}")
     print(f"Metadata Records       : {len(metadata_df)}")
 
-    total_lc = sum(len(d["lightcurve"]) for d in datasets)
-    total_gti = sum(len(d["gti"]) for d in datasets)
-    total_spec = sum(len(d["spectrum"]) for d in datasets)
+    total_lc = sum(d["num_lc"] for d in summary_records)
+    total_gti = sum(d["num_gti"] for d in summary_records)
+    total_spec = sum(d["num_spectrum"] for d in summary_records)
 
-    print(f"Total Light Curve Records : {total_lc}")
-    print(f"Total GTI Records         : {total_gti}")
-    print(f"Total Spectrum Records    : {total_spec}")
+    print(f"Total Light Curve Records : {total_lc:,}")
+    print(f"Total GTI Records         : {total_gti:,}")
+    print(f"Total Spectrum Records    : {total_spec:,}")
 
     success("SoLEXS preprocessing summary generated.")
+
 
 # ==========================================================
 # SoLEXS Pipeline
@@ -265,29 +236,22 @@ def process_solexs():
     """
     Execute complete SoLEXS preprocessing pipeline.
     """
-
     print_heading("SoLEXS Preprocessing Pipeline")
 
     observations = locate_solexs_files()
 
-    datasets = load_solexs(observations)
-
-    validate_solexs(datasets)
+    datasets_summary = load_and_validate_solexs(observations)
 
     metadata_df = extract_solexs_metadata()
 
-    solexs_summary(datasets, metadata_df)
+    solexs_summary(datasets_summary, metadata_df)
     
     success("SoLEXS preprocessing completed successfully.")
 
     return {
-
         "observations": observations,
-
-        "datasets": datasets,
-
+        "datasets": datasets_summary,
         "metadata": metadata_df
-
     }
 
 

@@ -148,71 +148,58 @@ def locate_hel1os_files():
     return observations
 
 # ==========================================================
-# Load HEL1OS Datasets
+# Stream & Validate HEL1OS Datasets (Memory Efficient)
 # ==========================================================
 
-def load_hel1os(observations):
+import gc
 
-    print_heading("Loading HEL1OS Datasets")
 
-    datasets = []
+def load_and_validate_hel1os(observations):
+    """
+    Stream each HEL1OS observation: load, validate, extract window bounds,
+    and free DataFrames immediately to conserve RAM.
+    """
+    print_heading("Loading & Validating HEL1OS Datasets")
+
+    summary_records = []
 
     for i, obs in enumerate(observations, start=1):
-
         observation_name = obs["name"]
-
-        print(f"\nLoading Observation {i}: {observation_name}")
+        print(f"\nProcessing Observation {i}/{len(observations)}: {observation_name}")
 
         event_df = read_event_file(obs["event"])
         gti_df = read_gti_file(obs["gti"])
         hk_df = read_housekeeping_file(obs["housekeeping"])
 
-        datasets.append({
-
-            "name": observation_name,
-
-            "path": obs["path"],
-
-            "event": event_df,
-
-            "gti": gti_df,
-
-            "housekeeping": hk_df
-
-        })
-
-    success("HEL1OS datasets loaded successfully.")
-
-    return datasets
-
-# ==========================================================
-# Validate HEL1OS Datasets
-# ==========================================================
-
-def validate_hel1os(datasets):
-
-    print_heading("Validating HEL1OS Datasets")
-
-    for dataset in datasets:
-
-        print(f"\nValidating {dataset['name']}")
-
-        event_df = dataset["event"]
-        hk_df = dataset["housekeeping"]
-
-        print("\nEvent Dataset Validation")
-
+        # Validate
         validate_dataset(event_df)
         validate_time_column(event_df, "mjd")
         validate_negative_values(event_df, "ener")
 
-        print("\nHousekeeping Dataset Validation")
-
         validate_dataset(hk_df)
         validate_time_column(hk_df, "mjd")
 
-    success("HEL1OS validation completed.")
-    
+        # Extract window bounds and stats
+        summary_records.append({
+            "name": observation_name,
+            "path": obs["path"],
+            "event_start_mjd": event_df["mjd"].min() if not event_df.empty else 0.0,
+            "event_end_mjd": event_df["mjd"].max() if not event_df.empty else 0.0,
+            "hk_start_mjd": hk_df["mjd"].min() if not hk_df.empty else 0.0,
+            "hk_end_mjd": hk_df["mjd"].max() if not hk_df.empty else 0.0,
+            "num_event": len(event_df),
+            "num_gti": len(gti_df),
+            "num_hk": len(hk_df),
+        })
+
+        # Explicitly free memory
+        del event_df, gti_df, hk_df
+        gc.collect()
+
+    success("HEL1OS datasets loaded and validated successfully.")
+    return summary_records
+
+
 # ==========================================================
 # Extract HEL1OS Metadata
 # ==========================================================
@@ -221,23 +208,13 @@ def extract_hel1os_metadata():
     """
     Extract metadata from all HEL1OS scientific files.
     """
-
     print_heading("Extracting HEL1OS Metadata")
 
-    patterns = [
-        "*.fits"
-    ]
+    patterns = ["*.fits"]
+    metadata_df = extract_directory_metadata(HEL1OS_DIR, patterns)
 
-    metadata_df = extract_directory_metadata(
-        HEL1OS_DIR,
-        patterns
-    )
-
-    print()
-    print(metadata_df)
-
+    print(f"\nMetadata records extracted: {len(metadata_df)}")
     success("HEL1OS metadata extracted successfully.")
-
     return metadata_df
 
 
@@ -245,22 +222,23 @@ def extract_hel1os_metadata():
 # HEL1OS Scientific Summary
 # ==========================================================
 
-def hel1os_summary(datasets, metadata_df):
+def hel1os_summary(summary_records, metadata_df):
 
     print_heading("HEL1OS Scientific Summary")
 
-    print(f"Observations Processed : {len(datasets)}")
+    print(f"Observations Processed : {len(summary_records)}")
     print(f"Metadata Records       : {len(metadata_df)}")
 
-    total_events = sum(len(d["event"]) for d in datasets)
-    total_gti = sum(len(d["gti"]) for d in datasets)
-    total_hk = sum(len(d["housekeeping"]) for d in datasets)
+    total_events = sum(d["num_event"] for d in summary_records)
+    total_gti = sum(d["num_gti"] for d in summary_records)
+    total_hk = sum(d["num_hk"] for d in summary_records)
 
-    print(f"Total Event Records        : {total_events}")
-    print(f"Total GTI Records          : {total_gti}")
-    print(f"Total Housekeeping Records : {total_hk}")
+    print(f"Total Event Records        : {total_events:,}")
+    print(f"Total GTI Records          : {total_gti:,}")
+    print(f"Total Housekeeping Records : {total_hk:,}")
 
     success("HEL1OS preprocessing summary generated.")
+
 
 # ==========================================================
 # HEL1OS Pipeline
@@ -274,21 +252,17 @@ def process_hel1os():
     
     observations = locate_hel1os_files()
 
-    datasets = load_hel1os(observations)
-
-    validate_hel1os(datasets)
+    datasets_summary = load_and_validate_hel1os(observations)
 
     metadata_df = extract_hel1os_metadata()
 
-    hel1os_summary(datasets, metadata_df)
+    hel1os_summary(datasets_summary, metadata_df)
 
     success("HEL1OS preprocessing completed successfully.")
 
     return {
         "observations": observations,
-
-        "datasets": datasets,
-
+        "datasets": datasets_summary,
         "metadata": metadata_df
     }
 

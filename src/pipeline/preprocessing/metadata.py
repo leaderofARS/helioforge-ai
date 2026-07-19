@@ -80,28 +80,18 @@ def extract_directory_metadata(directory, patterns):
 
     print_heading("Metadata Extraction")
 
+    count = 0
     for pattern in patterns:
-
         for file in directory.rglob(pattern):
-
-            # Skip empty files
             if file.stat().st_size == 0:
-                print(f"Skipping empty file : {file.name}")
                 continue
-
-            print(f"Processing : {file.name}")
-
+            count += 1
+            if count % 500 == 1:
+                print(f"Extracting metadata... (file {count})")
             try:
-
-                records.append(
-                    extract_metadata(file)
-                )
-
+                records.append(extract_metadata(file))
             except Exception as e:
-
-                print(f"Skipping corrupt file : {file.name}")
-                print(f"Reason : {e}")
-
+                print(f"Skipping corrupt file : {file.name} (Reason: {e})")
                 continue
 
     df = pd.DataFrame(records)

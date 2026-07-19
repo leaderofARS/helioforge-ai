@@ -28,9 +28,8 @@ from src.utils.preprocessing_utils import (
 
 def compare_observation_windows(hel1os_data, solexs_data):
     """
-    Compare HEL1OS and SoLEXS observation windows.
+    Compare HEL1OS and SoLEXS observation windows using memory-efficient summary records.
     """
-
     print_heading("Observation Window Comparison")
 
     records = []
@@ -39,33 +38,18 @@ def compare_observation_windows(hel1os_data, solexs_data):
         hel1os_data["datasets"],
         solexs_data["datasets"]
     ):
-
-        event_df = hel_obs["event"]
-        hk_df = hel_obs["housekeeping"]
-
-        lc_df = slx_obs["lightcurve"]
-        gti_df = slx_obs["gti"]
-
         record = {
-
             "HEL1OS Observation": hel_obs["name"],
-
             "SoLEXS Observation": slx_obs["name"],
-
-            "HEL1OS Event Start (MJD)": event_df["mjd"].min(),
-            "HEL1OS Event End (MJD)": event_df["mjd"].max(),
-
-            "HEL1OS HK Start (MJD)": hk_df["mjd"].min(),
-            "HEL1OS HK End (MJD)": hk_df["mjd"].max(),
-
-            "SoLEXS LC Start (Unix)": lc_df["TIME"].min(),
-            "SoLEXS LC End (Unix)": lc_df["TIME"].max(),
-
-            "SoLEXS GTI Start (Unix)": gti_df["START"].min(),
-            "SoLEXS GTI End (Unix)": gti_df["STOP"].max()
-
+            "HEL1OS Event Start (MJD)": hel_obs["event_start_mjd"],
+            "HEL1OS Event End (MJD)": hel_obs["event_end_mjd"],
+            "HEL1OS HK Start (MJD)": hel_obs["hk_start_mjd"],
+            "HEL1OS HK End (MJD)": hel_obs["hk_end_mjd"],
+            "SoLEXS LC Start (Unix)": slx_obs["lc_start_time"],
+            "SoLEXS LC End (Unix)": slx_obs["lc_end_time"],
+            "SoLEXS GTI Start (Unix)": slx_obs["gti_start_time"],
+            "SoLEXS GTI End (Unix)": slx_obs["gti_end_time"],
         }
-
         records.append(record)
 
     success("Observation windows compared.")
