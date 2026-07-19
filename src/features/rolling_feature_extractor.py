@@ -276,7 +276,7 @@ class RollingFeatureExtractor:
     def __init__(
         self,
         context_seconds: int = 60,
-        stride: int = 1,
+        stride: int = 32,
     ) -> None:
         if context_seconds < 10:
             raise ValueError("context_seconds must be >= 10 for meaningful statistics.")

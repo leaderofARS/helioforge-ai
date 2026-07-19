@@ -71,13 +71,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--stride",
         type=int,
-        default=1,
+        default=32,
         metavar="SEC",
         help=(
             "Step between output rows in seconds. "
-            "stride=1 → one row per second (max resolution, slower). "
-            "stride=4 → one row per 4 seconds (4× faster, coarser). "
-            "Default: 1"
+            "stride=32  → one row per 32 seconds (default, fast, ~2700 rows/obs). "
+            "stride=1   → one row per second (maximum resolution, very slow). "
+            "Default: 32"
         ),
     )
     parser.add_argument(

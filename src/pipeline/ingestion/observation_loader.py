@@ -107,17 +107,37 @@ class ObservationLoader:
         )
 
         ##################################################
-        # FINAL RETURN — lengths guaranteed equal
+        # FINAL RETURN — clean NaN/Inf and report data quality
         ##################################################
 
-        n = len(timestamps)   # soft and hard are already matched
+        n = len(timestamps)
+
+        # SoLEXS COUNTS may contain NaN for eclipse / SAA / flagged periods.
+        # Replace NaN/Inf with 0 so the rolling extractor sees a full-length
+        # contiguous array instead of all-masked windows.
+        soft_signal = np.nan_to_num(
+            soft_signal[:n].astype(np.float64),
+            nan=0.0, posinf=0.0, neginf=0.0,
+        )
+        hard_signal = np.nan_to_num(
+            hard_signal[:n].astype(np.float64),
+            nan=0.0, posinf=0.0, neginf=0.0,
+        )
+        timestamps = timestamps[:n].astype(np.float64)
+
+        # Diagnostic — how much of this observation is "active" (nonzero soft)
+        n_active = int(np.count_nonzero(soft_signal))
+        pct      = 100.0 * n_active / max(n, 1)
+        print(
+            f"         [loader] T={n}s  active={n_active}s ({pct:.1f}% nonzero COUNTS)"
+        )
 
         return {
             "solexs_id":   solexs_folder.name,
             "hel1os_id":   hel1os_folder.name,
-            "timestamps":  timestamps[:n],
-            "soft_signal": soft_signal[:n],
-            "hard_signal": hard_signal[:n],
+            "timestamps":  timestamps,
+            "soft_signal": soft_signal,
+            "hard_signal": hard_signal,
         }
 
     # ------------------------------------------------------------------
