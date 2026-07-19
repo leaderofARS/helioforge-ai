@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.features.feature_selection import FeatureSelector
+from src.features.feature_selector import FeatureSelector
 from src.pipeline.ingestion.observation_loader import ObservationLoader
 from src.utils.config import PATH_CFG
 
