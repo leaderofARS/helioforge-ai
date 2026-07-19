@@ -192,6 +192,28 @@ class ObservationLoader:
     ##################################################
 
     def load_all(self):
+        """
+        Yield all paired (SoLEXS, HEL1OS) observations.
+
+        Pairing strategy — date-based (fixes the documented known limitation)
+        ─────────────────────────────────────────────────────────────────────
+        Both instruments encode the observation date in the folder name:
+          SoLEXS : AL1_SLX_L1_YYYYMMDD_v*.0   → date token at position 3
+          HEL1OS : HLS_YYYYMMDD_HHMMSS_*sec_*  → date token at position 1
+
+        We extract the 8-digit date from each folder name, convert to int,
+        then for each SoLEXS observation find the closest HEL1OS observation
+        within MAX_DATE_GAP_DAYS days.  If no HEL1OS match is within that
+        window, the SoLEXS observation is skipped with a warning.
+
+        This avoids the old bug where alphabetically sorted index-0 SoLEXS
+        (2024-03-05) was paired with index-0 HEL1OS (2023-12-23), producing
+        a near-zero length signal after length truncation.
+        """
+        import re
+
+        MAX_DATE_GAP_DAYS = 7      # observations within 7 days are considered a valid pair
+
         solexs_root = self.processed_directory / "solexs"
         hel1os_root = self.processed_directory / "hel1os"
 
@@ -211,21 +233,75 @@ class ObservationLoader:
                 "Please run Stage 1 preprocessing (preprocess.py) first."
             )
 
-        # Pair observations by index up to available count
-        n_pairs = min(len(solexs_folders), len(hel1os_folders))
-        for i in range(n_pairs):
+        # ── Extract 8-digit date from folder names ────────────────────────
+        def _extract_date(folder: Path) -> int | None:
+            """Return YYYYMMDD as int, or None if not found."""
+            m = re.search(r"(\d{8})", folder.name)
+            return int(m.group(1)) if m else None
+
+        # Build lookup: date_int → hel1os_folder (keep first match per date)
+        hel1os_by_date: dict[int, Path] = {}
+        for h in hel1os_folders:
+            d = _extract_date(h)
+            if d is not None and d not in hel1os_by_date:
+                hel1os_by_date[d] = h
+
+        hel1os_dates = sorted(hel1os_by_date.keys())
+
+        def _nearest_hel1os(solexs_date: int) -> Path | None:
+            """Return the closest HEL1OS folder within MAX_DATE_GAP_DAYS."""
+            if not hel1os_dates:
+                return None
+            # Convert YYYYMMDD ints to a rough day difference (not calendar-exact
+            # but accurate enough for a 7-day window within the same month/year)
+            def _to_days(d: int) -> int:
+                y, m, day = d // 10000, (d % 10000) // 100, d % 100
+                return y * 365 + m * 30 + day       # approximate, good enough
+
+            s_days = _to_days(solexs_date)
+            best_date = min(hel1os_dates, key=lambda d: abs(_to_days(d) - s_days))
+            if abs(_to_days(best_date) - s_days) <= MAX_DATE_GAP_DAYS:
+                return hel1os_by_date[best_date]
+            return None
+
+        # ── Yield paired observations ─────────────────────────────────────
+        paired = 0
+        skipped_no_match = 0
+
+        for slx in solexs_folders:
+            slx_date = _extract_date(slx)
+            if slx_date is None:
+                print(f"[ObservationLoader] Cannot parse date from: {slx.name} — skipping")
+                skipped_no_match += 1
+                continue
+
+            hel = _nearest_hel1os(slx_date)
+            if hel is None:
+                print(
+                    f"[ObservationLoader] No HEL1OS match within {MAX_DATE_GAP_DAYS} days "
+                    f"for SoLEXS {slx.name} (date={slx_date}) — skipping"
+                )
+                skipped_no_match += 1
+                continue
+
             try:
-                obs = self.load(solexs_folders[i], hel1os_folders[i])
+                obs = self.load(slx, hel)
                 if len(obs["soft_signal"]) == 0 or len(obs["hard_signal"]) == 0:
                     print(
-                        f"[ObservationLoader] Skipping empty observation pair: "
-                        f"{obs['solexs_id']} / {obs['hel1os_id']}"
+                        f"[ObservationLoader] Empty signals for pair "
+                        f"{obs['solexs_id']} / {obs['hel1os_id']} — skipping"
                     )
                     continue
+                paired += 1
                 yield obs
             except Exception as exc:
                 print(
                     f"[ObservationLoader] Error loading pair "
-                    f"({solexs_folders[i].name} / {hel1os_folders[i].name}): {exc}"
+                    f"({slx.name} / {hel.name}): {exc}"
                 )
                 continue
+
+        print(
+            f"[ObservationLoader] Pairing complete — "
+            f"yielded {paired} pairs, skipped {skipped_no_match} (no date match)."
+        )
