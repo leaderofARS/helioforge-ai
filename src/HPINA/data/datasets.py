@@ -167,9 +167,10 @@ class WindowGenerator:
 
         # Save to destination directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        train_path = PATH_CFG.windows.train
-        val_path = PATH_CFG.windows.val
-        test_path = PATH_CFG.windows.test
+        suffix = f"_w{self.window_size}" if self.window_size != 512 else ""
+        train_path = self.output_dir / f"train{suffix}.pt"
+        val_path = self.output_dir / f"val{suffix}.pt"
+        test_path = self.output_dir / f"test{suffix}.pt"
 
         torch.save({"sequences": train_tensor}, train_path)
         torch.save({"sequences": val_tensor}, val_path)
@@ -190,6 +191,28 @@ class WindowGenerator:
             "val": val_tensor,
             "test": test_tensor,
         }
+
+    def generate_all_scales(self, scales: list[tuple[int, int]] | None = None) -> dict[str, dict[str, torch.Tensor]]:
+        """
+        Generate multiple window scales (e.g. w256, w512, w1024) in a single run.
+        """
+        if scales is None:
+            scales = [(256, 16), (512, 32), (1024, 64)]
+
+        results = {}
+        for win_size, stride in scales:
+            logger.info(f"Generating window tensors for window_size={win_size}, stride={stride}")
+            gen = WindowGenerator(
+                window_size=win_size,
+                stride=stride,
+                train_ratio=self.train_ratio,
+                val_ratio=self.val_ratio,
+                test_ratio=self.test_ratio,
+                output_dir=self.output_dir,
+            )
+            results[f"w{win_size}"] = gen.generate_all()
+
+        return results
 
 
 if __name__ == "__main__":

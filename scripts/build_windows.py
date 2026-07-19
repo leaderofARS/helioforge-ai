@@ -39,17 +39,29 @@ def main() -> int:
         help="Sliding window step stride in timesteps (default: 32)",
     )
 
+    parser.add_argument(
+        "--all-scales",
+        action="store_true",
+        help="Generate sequence window tensors for all scales (256, 512, 1024)",
+    )
+
     args = parser.parse_args()
 
     print("=" * 60)
     print("  HELIO-FORGE AI  |  HPINA WINDOW GENERATOR")
     print("=" * 60)
-    print(f"  Window Size : {args.window_size}")
-    print(f"  Stride      : {args.stride}")
+    if args.all_scales:
+        print("  Mode        : Multi-Scale Generation (w256, w512, w1024)")
+    else:
+        print(f"  Window Size : {args.window_size}")
+        print(f"  Stride      : {args.stride}")
     print("=" * 60 + "\n")
 
     generator = WindowGenerator(window_size=args.window_size, stride=args.stride)
-    generator.generate_all()
+    if args.all_scales:
+        generator.generate_all_scales()
+    else:
+        generator.generate_all()
 
     return 0
 
