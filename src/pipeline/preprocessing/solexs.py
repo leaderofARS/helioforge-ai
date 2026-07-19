@@ -153,34 +153,38 @@ def load_and_validate_solexs(observations):
         observation_name = obs["lightcurve"].parent.parent.name
         print(f"\nProcessing Observation {i}/{len(observations)}: {observation_name}")
 
-        lc_df = read_lightcurve(obs["lightcurve"])
-        gti_df = read_gti_file(obs["gti"])
-        spectrum_df = read_spectrum(obs["spectrum"])
+        try:
+            lc_df = read_lightcurve(obs["lightcurve"])
+            gti_df = read_gti_file(obs["gti"])
+            spectrum_df = read_spectrum(obs["spectrum"])
 
-        # Validate
-        validate_dataset(lc_df)
-        validate_time_column(lc_df, "TIME")
-        validate_numeric_column(lc_df, "COUNTS")
+            # Validate
+            validate_dataset(lc_df)
+            validate_time_column(lc_df, "TIME")
+            validate_numeric_column(lc_df, "COUNTS")
 
-        validate_dataset(gti_df)
-        validate_time_column(gti_df, "START")
+            validate_dataset(gti_df)
+            validate_time_column(gti_df, "START")
 
-        # Extract window bounds and stats
-        summary_records.append({
-            "name": observation_name,
-            "path": obs["lightcurve"].parent.parent,
-            "lc_start_time": lc_df["TIME"].min() if not lc_df.empty else 0.0,
-            "lc_end_time": lc_df["TIME"].max() if not lc_df.empty else 0.0,
-            "gti_start_time": gti_df["START"].min() if not gti_df.empty else 0.0,
-            "gti_end_time": gti_df["STOP"].max() if not gti_df.empty else 0.0,
-            "num_lc": len(lc_df),
-            "num_gti": len(gti_df),
-            "num_spectrum": len(spectrum_df),
-        })
+            # Extract window bounds and stats
+            summary_records.append({
+                "name": observation_name,
+                "path": obs["lightcurve"].parent.parent,
+                "lc_start_time": lc_df["TIME"].min() if not lc_df.empty else 0.0,
+                "lc_end_time": lc_df["TIME"].max() if not lc_df.empty else 0.0,
+                "gti_start_time": gti_df["START"].min() if not gti_df.empty else 0.0,
+                "gti_end_time": gti_df["STOP"].max() if not gti_df.empty else 0.0,
+                "num_lc": len(lc_df),
+                "num_gti": len(gti_df),
+                "num_spectrum": len(spectrum_df),
+            })
 
-        # Explicitly free memory
-        del lc_df, gti_df, spectrum_df
-        gc.collect()
+            del lc_df, gti_df, spectrum_df
+            gc.collect()
+
+        except Exception as exc:
+            print(f"\n[WARNING] Skipping corrupt/truncated observation '{observation_name}': {exc}")
+            gc.collect()
 
     success("SoLEXS datasets loaded and validated successfully.")
     return summary_records

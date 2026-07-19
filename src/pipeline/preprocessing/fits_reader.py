@@ -78,16 +78,11 @@ def read_event_file(file_path):
     """
     Read HEL1OS Event File.
     """
-
-    with fits.open(file_path) as hdul:
-
+    with fits.open(file_path, ignore_missing_end=True) as hdul:
         df = _table_to_dataframe(hdul[1])
-
         if "recnum" in df.columns:
             df["recnum"] = df["recnum"].astype("int32")
-
     success("Event dataset loaded.")
-
     return df
 
 
@@ -99,13 +94,9 @@ def read_gti_file(file_path):
     """
     Read Good Time Interval (GTI) file.
     """
-
-    with fits.open(file_path) as hdul:
-
+    with fits.open(file_path, ignore_missing_end=True) as hdul:
         df = _table_to_dataframe(hdul[1])
-
     success("GTI dataset loaded.")
-
     return df
 
 
@@ -117,13 +108,9 @@ def read_housekeeping_file(file_path):
     """
     Read Housekeeping dataset.
     """
-
-    with fits.open(file_path) as hdul:
-
+    with fits.open(file_path, ignore_missing_end=True) as hdul:
         df = _table_to_dataframe(hdul[1])
-
     success("Housekeeping dataset loaded.")
-
     return df
 
 
@@ -135,19 +122,16 @@ def read_lightcurve(file_path):
     """
     Read SoLEXS Light Curve.
     """
-
-    with fits.open(file_path) as hdul:
-
+    with fits.open(file_path, ignore_missing_end=True) as hdul:
         df = _table_to_dataframe(hdul[1])
-
     success("Light Curve dataset loaded.")
-
     return df
 
 
 # ==========================================================
 # Read Spectrum
 # ==========================================================
+
 def read_spectrum(file_path):
     """
     Read SoLEXS Spectrum (.pi).
@@ -156,13 +140,9 @@ def read_spectrum(file_path):
     (CHANNEL and COUNTS), we return the FITS table directly
     instead of converting it into a DataFrame.
     """
-
-    with fits.open(file_path) as hdul:
-
+    with fits.open(file_path, ignore_missing_end=True) as hdul:
         spectrum = hdul[1].data.copy()
-
     success("Spectrum dataset loaded.")
-
     return spectrum
 
 

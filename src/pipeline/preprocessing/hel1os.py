@@ -167,34 +167,38 @@ def load_and_validate_hel1os(observations):
         observation_name = obs["name"]
         print(f"\nProcessing Observation {i}/{len(observations)}: {observation_name}")
 
-        event_df = read_event_file(obs["event"])
-        gti_df = read_gti_file(obs["gti"])
-        hk_df = read_housekeeping_file(obs["housekeeping"])
+        try:
+            event_df = read_event_file(obs["event"])
+            gti_df = read_gti_file(obs["gti"])
+            hk_df = read_housekeeping_file(obs["housekeeping"])
 
-        # Validate
-        validate_dataset(event_df)
-        validate_time_column(event_df, "mjd")
-        validate_negative_values(event_df, "ener")
+            # Validate
+            validate_dataset(event_df)
+            validate_time_column(event_df, "mjd")
+            validate_negative_values(event_df, "ener")
 
-        validate_dataset(hk_df)
-        validate_time_column(hk_df, "mjd")
+            validate_dataset(hk_df)
+            validate_time_column(hk_df, "mjd")
 
-        # Extract window bounds and stats
-        summary_records.append({
-            "name": observation_name,
-            "path": obs["path"],
-            "event_start_mjd": event_df["mjd"].min() if not event_df.empty else 0.0,
-            "event_end_mjd": event_df["mjd"].max() if not event_df.empty else 0.0,
-            "hk_start_mjd": hk_df["mjd"].min() if not hk_df.empty else 0.0,
-            "hk_end_mjd": hk_df["mjd"].max() if not hk_df.empty else 0.0,
-            "num_event": len(event_df),
-            "num_gti": len(gti_df),
-            "num_hk": len(hk_df),
-        })
+            # Extract window bounds and stats
+            summary_records.append({
+                "name": observation_name,
+                "path": obs["path"],
+                "event_start_mjd": event_df["mjd"].min() if not event_df.empty else 0.0,
+                "event_end_mjd": event_df["mjd"].max() if not event_df.empty else 0.0,
+                "hk_start_mjd": hk_df["mjd"].min() if not hk_df.empty else 0.0,
+                "hk_end_mjd": hk_df["mjd"].max() if not hk_df.empty else 0.0,
+                "num_event": len(event_df),
+                "num_gti": len(gti_df),
+                "num_hk": len(hk_df),
+            })
 
-        # Explicitly free memory
-        del event_df, gti_df, hk_df
-        gc.collect()
+            del event_df, gti_df, hk_df
+            gc.collect()
+
+        except Exception as exc:
+            print(f"\n[WARNING] Skipping corrupt/truncated observation '{observation_name}': {exc}")
+            gc.collect()
 
     success("HEL1OS datasets loaded and validated successfully.")
     return summary_records
