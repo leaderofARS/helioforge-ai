@@ -9,7 +9,10 @@ workflow for HEL1OS observations.
 ==========================================================
 """
 
+from __future__ import annotations
+
 from src.pipeline.preprocessing.config import HEL1OS_DIR
+from src.utils.config import PATH_CFG
 
 from src.pipeline.preprocessing.fits_reader import (
     read_event_file,
@@ -39,34 +42,38 @@ from src.utils.preprocessing_utils import (
 
 def locate_hel1os_files():
     """
-    Locate all valid HEL1OS observations.
+    Locate valid HEL1OS observations and apply the dataset budget.
 
-    Each observation should contain:
+    Directory layout (55 GB dataset on EC2):
+        hel1os/
+          hel1os_2026Jun26T<stamp>/          ← download batch
+            HLS_<date>_<dur>sec_lev1_V{111,211}/     ← observation (top)
+              <YYYY>/<MM>/<DD>/
+                HLS_<date>_<dur>sec_lev1_V{111,211}/  ← repeated (actual data)
+                  events/  evt.fits
+                  aux/     gticdte1.fits  hk.fits
 
-        events/
-            evt.fits
-
-        aux/
-            gticdte1.fits
-            hk.fits
-
-    Empty (0-byte) files are automatically skipped.
+    Budget mode (data_paths.yaml  dataset.mode = 'budget'):
+        Observations are sorted alphabetically (reproducible) and
+        accumulated until the cumulative raw-file size reaches
+        dataset.hel1os_gb (32.4 GB for the 55 GB run).
     """
 
     print_heading("Locating HEL1OS Files")
 
-    # HEL1OS_DIR layout (55 GB dataset):
-    #   hel1os/
-    #     hel1os_2026Jun26T*/           ← download batch folder
-    #       HLS_<date>_<dur>sec_lev1_V{111,211}/      ← top-level obs name
-    #         <YYYY>/<MM>/<DD>/
-    #           HLS_<date>_<dur>sec_lev1_V{111,211}/  ← repeated folder (actual data)
-    #             events/  evt.fits
-    #             aux/     gticdte1.fits  hk.fits
-    #
-    # rglob("HLS_*_lev1_V*") matches BOTH levels.
-    # We deduplicate by observation name and keep only the dir that
-    # actually contains evt.fits underneath it.
+    budget = PATH_CFG.dataset
+    byte_ceiling = budget.hel1os_bytes if budget.is_budget_mode else None
+
+    if budget.is_budget_mode:
+        print(
+            f"[Budget] mode=budget  "
+            f"ceiling={budget.hel1os_gb:.1f} GB ({byte_ceiling:,} bytes)"
+        )
+
+    # ── Step 1: collect all deduplicated valid observations ──────────────
+    # rglob matches both the top-level and the deep YYYY/MM/DD copy of each
+    # observation name.  We deduplicate by name, keeping the first candidate
+    # that has all three required FITS files.
 
     seen: dict[str, dict] = {}   # obs_name → record
 
@@ -76,26 +83,22 @@ def locate_hel1os_files():
             continue
 
         obs_name = candidate.name
-
-        # Skip if we already resolved this observation to a valid record
         if obs_name in seen:
             continue
 
-        event        = next(candidate.rglob("evt.fits"),        None)
-        gti          = next(candidate.rglob("gticdte1.fits"),   None)
-        housekeeping = next(candidate.rglob("hk.fits"),         None)
+        event        = next(candidate.rglob("evt.fits"),       None)
+        gti          = next(candidate.rglob("gticdte1.fits"),  None)
+        housekeeping = next(candidate.rglob("hk.fits"),        None)
 
-        # Skip if any required file is missing
         if not (event and gti and housekeeping):
             continue
 
-        # Skip empty files
-        if (
-            event.stat().st_size == 0
-            or gti.stat().st_size == 0
-            or housekeeping.stat().st_size == 0
-        ):
-            print(f"Skipping empty observation: {obs_name}")
+        e_sz = event.stat().st_size
+        g_sz = gti.stat().st_size
+        h_sz = housekeeping.stat().st_size
+
+        if e_sz == 0 or g_sz == 0 or h_sz == 0:
+            print(f"[Skip] empty files in: {obs_name}")
             continue
 
         seen[obs_name] = {
@@ -104,11 +107,35 @@ def locate_hel1os_files():
             "event":        event,
             "gti":          gti,
             "housekeeping": housekeeping,
+            "_size_bytes":  e_sz + g_sz + h_sz,   # raw FITS size for budget tracking
         }
 
-    observations = list(seen.values())
+    all_observations = list(seen.values())
+    print(f"[HEL1OS] Total valid observations found: {len(all_observations)}")
 
-    print(f"\nFound {len(observations)} complete HEL1OS observations.")
+    # ── Step 2: apply budget ceiling ─────────────────────────────────────
+    if not budget.is_budget_mode or byte_ceiling is None:
+        observations = all_observations
+    else:
+        observations = []
+        accumulated = 0
+        for obs in all_observations:          # already sorted alphabetically
+            accumulated += obs["_size_bytes"]
+            observations.append(obs)
+            if accumulated >= byte_ceiling:
+                break
+
+        used_gb = accumulated / 1024 ** 3
+        print(
+            f"[Budget] Selected {len(observations)} / {len(all_observations)} "
+            f"observations  ({used_gb:.2f} GB / {budget.hel1os_gb:.1f} GB ceiling)"
+        )
+
+    # ── Step 3: strip internal budget key before returning ───────────────
+    for obs in observations:
+        obs.pop("_size_bytes", None)
+
+    print(f"\n[HEL1OS] Using {len(observations)} observations for preprocessing.")
 
     if not observations:
         raise FileNotFoundError(
@@ -118,8 +145,6 @@ def locate_hel1os_files():
         )
 
     success("HEL1OS files located.")
-
-
     return observations
 
 # ==========================================================

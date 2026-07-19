@@ -119,6 +119,33 @@ class NormalisationPaths:
     stats_json: Path
 
 
+@dataclass
+class DatasetBudget:
+    """
+    Controls how many raw observations are loaded.
+
+    mode = 'all'    — process every file found (full 83.1 GB)
+    mode = 'budget' — accumulate observations (sorted by name, reproducible)
+                      until the per-instrument GB ceiling is reached.
+    """
+    mode:       str    # 'all' | 'budget'
+    total_gb:   float  # informational: target total GB
+    hel1os_gb:  float  # HEL1OS byte ceiling in GB
+    solexs_gb:  float  # SoLEXS byte ceiling in GB
+    sort_key:   str    # 'name' → sort folders alphabetically
+
+    @property
+    def hel1os_bytes(self) -> int:
+        return int(self.hel1os_gb * 1024 ** 3)
+
+    @property
+    def solexs_bytes(self) -> int:
+        return int(self.solexs_gb * 1024 ** 3)
+
+    @property
+    def is_budget_mode(self) -> bool:
+        return self.mode == "budget"
+
 # ---------------------------------------------------------------------------
 # Root config object
 # ---------------------------------------------------------------------------
@@ -126,6 +153,7 @@ class NormalisationPaths:
 @dataclass
 class PathConfig:
     dataset_root:   Path
+    dataset:        DatasetBudget
     raw:            RawPaths
     preprocessing:  PreprocessingPaths
     features:       FeaturePaths
@@ -167,9 +195,17 @@ class PathConfig:
         log_d        = d["logs"]
         norm_d       = d["normalisation"]
         btcn_d       = exp_d["baseline_tcn"]
+        bgt_d        = d.get("dataset", {})
 
         return cls(
             dataset_root  = p(d["dataset_root"]),
+            dataset       = DatasetBudget(
+                mode      = bgt_d.get("mode",       "all"),
+                total_gb  = float(bgt_d.get("total_gb",  83.1)),
+                hel1os_gb = float(bgt_d.get("hel1os_gb", 48.9)),
+                solexs_gb = float(bgt_d.get("solexs_gb", 34.2)),
+                sort_key  = bgt_d.get("sort_key",  "name"),
+            ),
             raw           = RawPaths(
                 root   = p(raw_d["root"]),
                 solexs = p(raw_d["solexs"]),

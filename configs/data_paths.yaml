@@ -21,6 +21,30 @@
 dataset_root: /opt/helioforge-ai
 
 # ---------------------------------------------------------------------------
+# Dataset budget  —  55 GB subset of the full 83.1 GB raw archive
+#
+# Full dataset breakdown:
+#   HEL1OS : 48.9 GB  (58.85% of total)
+#   SoLEXS : 34.2 GB  (41.15% of total)
+#   TOTAL  : 83.1 GB
+#
+# 55 GB target — same 58.85 / 41.15 instrument ratio:
+#   HEL1OS budget : 48.9 × (55/83.1) = 32.4 GB
+#   SoLEXS budget : 34.2 × (55/83.1) = 22.6 GB
+#
+# mode:
+#   "all"      — process every observation (full 83.1 GB)
+#   "budget"   — accumulate observations (sorted by name, reproducible)
+#                until hel1os_gb / solexs_gb byte ceilings are reached
+# ---------------------------------------------------------------------------
+dataset:
+  mode:        budget        # "all" | "budget"
+  total_gb:    55.0          # informational only
+  hel1os_gb:   32.4          # 48.9 × (55 / 83.1)
+  solexs_gb:   22.6          # 34.2 × (55 / 83.1)
+  sort_key:    name          # sort observations by folder name (reproducible)
+
+# ---------------------------------------------------------------------------
 # Stage 1 – Raw Observations  (55 GB — READ ONLY, never modified)
 # ---------------------------------------------------------------------------
 raw:

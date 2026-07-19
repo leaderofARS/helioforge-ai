@@ -9,7 +9,10 @@ workflow for SoLEXS observations.
 ==========================================================
 """
 
+from __future__ import annotations
+
 from src.pipeline.preprocessing.config import SOLEXS_DIR
+from src.utils.config import PATH_CFG
 
 from src.pipeline.preprocessing.fits_reader import (
     read_lightcurve,
@@ -39,62 +42,94 @@ from src.utils.preprocessing_utils import (
 
 def locate_solexs_files():
     """
-    Locate all valid SoLEXS observations.
+    Locate valid SoLEXS observations and apply the dataset budget.
 
-    Each observation should contain:
+    Each observation is an SDD2/ folder containing:
+        *.lc    — lightcurve
+        *.gti   — good time intervals
+        *.pi    — spectrum
 
-        SDD2/
-            *.lc
-            *.gti
-            *.pi
-
-    Empty (0-byte) files are automatically skipped.
+    Budget mode (data_paths.yaml  dataset.mode = 'budget'):
+        Observations are sorted alphabetically by parent folder name
+        (reproducible) and accumulated until the cumulative raw-file
+        size reaches dataset.solexs_gb (22.6 GB for the 55 GB run).
     """
 
     print_heading("Locating SoLEXS Files")
 
-    observations = []
+    budget = PATH_CFG.dataset
+    byte_ceiling = budget.solexs_bytes if budget.is_budget_mode else None
 
-    for sdd2_dir in SOLEXS_DIR.rglob("SDD2"):
+    if budget.is_budget_mode:
+        print(
+            f"[Budget] mode=budget  "
+            f"ceiling={budget.solexs_gb:.1f} GB ({byte_ceiling:,} bytes)"
+        )
 
-        lightcurve = next(sdd2_dir.glob("*.lc"), None)
-        gti = next(sdd2_dir.glob("*.gti"), None)
-        spectrum = next(sdd2_dir.glob("*.pi"), None)
+    # ── Step 1: collect all valid observations ─────────────────────────────
+    # Sort by parent folder name for reproducibility.
+    all_sdd2 = sorted(SOLEXS_DIR.rglob("SDD2"), key=lambda d: d.parent.name)
 
-        # Check all required files exist
+    all_observations = []
+
+    for sdd2_dir in all_sdd2:
+
+        lightcurve = next(sdd2_dir.glob("*.lc"),  None)
+        gti        = next(sdd2_dir.glob("*.gti"), None)
+        spectrum   = next(sdd2_dir.glob("*.pi"),  None)
+
         if not (lightcurve and gti and spectrum):
-
-            print(f"Skipping incomplete observation: {sdd2_dir.parent.name}")
+            print(f"[Skip] incomplete observation: {sdd2_dir.parent.name}")
             continue
 
-        # Skip empty / corrupted files
-        if (
-            lightcurve.stat().st_size == 0
-            or gti.stat().st_size == 0
-            or spectrum.stat().st_size == 0
-        ):
+        lc_sz = lightcurve.stat().st_size
+        g_sz  = gti.stat().st_size
+        s_sz  = spectrum.stat().st_size
 
-            print(f"Skipping empty observation: {sdd2_dir.parent.name}")
+        if lc_sz == 0 or g_sz == 0 or s_sz == 0:
+            print(f"[Skip] empty files in: {sdd2_dir.parent.name}")
             continue
 
-        observations.append({
-
-            "lightcurve": lightcurve,
-            "gti": gti,
-            "spectrum": spectrum
-
+        all_observations.append({
+            "lightcurve":   lightcurve,
+            "gti":          gti,
+            "spectrum":     spectrum,
+            "_size_bytes":  lc_sz + g_sz + s_sz,
         })
 
-    print(f"\nFound {len(observations)} complete SoLEXS observations.")
+    print(f"[SoLEXS] Total valid observations found: {len(all_observations)}")
+
+    # ── Step 2: apply budget ceiling ────────────────────────────────────
+    if not budget.is_budget_mode or byte_ceiling is None:
+        observations = all_observations
+    else:
+        observations = []
+        accumulated = 0
+        for obs in all_observations:      # already sorted alphabetically
+            accumulated += obs["_size_bytes"]
+            observations.append(obs)
+            if accumulated >= byte_ceiling:
+                break
+
+        used_gb = accumulated / 1024 ** 3
+        print(
+            f"[Budget] Selected {len(observations)} / {len(all_observations)} "
+            f"observations  ({used_gb:.2f} GB / {budget.solexs_gb:.1f} GB ceiling)"
+        )
+
+    # ── Step 3: strip internal budget key before returning ───────────────
+    for obs in observations:
+        obs.pop("_size_bytes", None)
+
+    print(f"\n[SoLEXS] Using {len(observations)} observations for preprocessing.")
 
     if not observations:
-
         raise FileNotFoundError(
-            "No valid SoLEXS observations found."
+            f"No valid SoLEXS observations found under {SOLEXS_DIR}.\n"
+            "Expected structure: solexs/<observation>/SDD2/{*.lc, *.gti, *.pi}"
         )
 
     success("SoLEXS files located.")
-
     return observations
 
 
