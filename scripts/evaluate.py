@@ -64,17 +64,24 @@ def main() -> int:
                 f"[STAGE] Preparing evaluation sample {index}: "
                 f"{observation['solexs_id']} / {observation['hel1os_id']}"
             )
-            features = pipeline.run(
-                observation["soft_signal"],
-                observation["hard_signal"],
-                observation["timestamps"],
-            )
-            row = {
-                "solexs_observation_id": observation["solexs_id"],
-                "hel1os_observation_id": observation["hel1os_id"],
-            }
-            row.update(features)
-            rows.append(row)
+            try:
+                features = pipeline.run(
+                    observation["soft_signal"],
+                    observation["hard_signal"],
+                    observation["timestamps"],
+                )
+                row = {
+                    "solexs_observation_id": observation["solexs_id"],
+                    "hel1os_observation_id": observation["hel1os_id"],
+                }
+                row.update(features)
+                rows.append(row)
+            except Exception as exc:
+                print(
+                    f"[WARNING] Skipping evaluation sample {index} "
+                    f"({observation['solexs_id']} / {observation['hel1os_id']}): {exc}"
+                )
+                continue
 
         if not rows:
             raise RuntimeError("No observations were loaded from the processed directories")

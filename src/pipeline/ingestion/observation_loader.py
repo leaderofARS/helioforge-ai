@@ -149,4 +149,18 @@ class ObservationLoader:
         # Pair observations by index up to available count
         n_pairs = min(len(solexs_folders), len(hel1os_folders))
         for i in range(n_pairs):
-            yield self.load(solexs_folders[i], hel1os_folders[i])
+            try:
+                obs = self.load(solexs_folders[i], hel1os_folders[i])
+                if len(obs["soft_signal"]) == 0 or len(obs["hard_signal"]) == 0:
+                    print(
+                        f"[ObservationLoader] Skipping empty observation pair: "
+                        f"{obs['solexs_id']} / {obs['hel1os_id']}"
+                    )
+                    continue
+                yield obs
+            except Exception as exc:
+                print(
+                    f"[ObservationLoader] Error loading pair "
+                    f"({solexs_folders[i].name} / {hel1os_folders[i].name}): {exc}"
+                )
+                continue
