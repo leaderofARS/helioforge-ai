@@ -156,6 +156,7 @@ tensorboard/
 data/raw/
 data/interim/
 data/external/
+data/preprocessing/
 
 ##############################
 # Scientific Data
