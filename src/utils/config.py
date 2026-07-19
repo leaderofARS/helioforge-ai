@@ -73,6 +73,9 @@ _FILE_MAP: dict[str, Path] = {
     "features_csv":              PATH_CFG.features.csv,
     "features_parquet":          PATH_CFG.features.parquet,
     "features_excel":            PATH_CFG.features.excel,
+    "all_features_csv":          PATH_CFG.features.root / "all_features.csv",
+    "all_features_parquet":      PATH_CFG.features.root / "all_features.parquet",
+    "all_features_excel":        PATH_CFG.features.root / "all_features.xlsx",
     "normalisation_stats":       PATH_CFG.normalisation.stats_json,
     # observation-level filenames (relative, not absolute)
     "observation_lightcurve":    Path("lightcurve.csv"),

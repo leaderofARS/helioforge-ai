@@ -98,18 +98,28 @@ def main() -> int:
         )
 
         ##################################################
-        # EXPORT
+        # EXPORT BOTH ALL 79 FEATURES AND 38 SELECTED FEATURES
         ##################################################
 
-        logger.info("Exporting selected features")
-        print(f"[STAGE] Exporting selected features to {PATH_CFG.features.root}")
+        logger.info("Exporting feature datasets")
+        print(f"[STAGE] Exporting feature datasets to {PATH_CFG.features.root}")
 
+        # Export 38 selected features (default)
         exporter = DatasetExporter(PATH_CFG.features.root)
         exporter.export_all(selected_dataframe)
 
-        print(f"[INFO] Original features      : {original_features}")
-        print(f"[INFO] After variance filter  : {variance_features}")
-        print(f"[INFO] After correlation filter: {correlation_features}")
+        # Export ALL 79 raw features
+        out_root = PATH_CFG.features.root
+        dataframe.to_csv(out_root / "all_features.csv", index=False)
+        try:
+            dataframe.to_parquet(out_root / "all_features.parquet", index=False)
+            dataframe.to_excel(out_root / "all_features.xlsx", index=False)
+        except Exception:
+            pass
+
+        print(f"[INFO] Original features (all_features.*)     : {original_features}")
+        print(f"[INFO] After variance filter                    : {variance_features}")
+        print(f"[INFO] After correlation filter (selected_features.*): {correlation_features}")
         print("[SUCCESS] Feature engineering workflow completed successfully")
         return 0
 
