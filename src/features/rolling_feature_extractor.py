@@ -59,6 +59,16 @@ from scipy.signal import find_peaks
 
 logger = logging.getLogger("helioforge.features.rolling")
 
+# NumPy 2.2 removed np.trapz — use np.trapezoid with a fallback for older numpy
+_trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+if _trapz is None:
+    def _trapz(y, x=None):  # type: ignore[misc]
+        """Pure-numpy trapezoidal integration fallback."""
+        if x is None:
+            return float(np.sum(y[:-1] + y[1:]) * 0.5)
+        dx = np.diff(x)
+        return float(np.sum((y[:-1] + y[1:]) * 0.5 * dx))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper: fast numpy skew / kurtosis (no scipy overhead per call)
@@ -178,7 +188,7 @@ def _extract_window_features(
     feat["soft_skewness"]        = _skew_np(s)
     feat["soft_kurtosis"]        = _kurt_np(s)
     feat["soft_signal_energy"]   = float(np.sum(s ** 2))
-    feat["soft_integrated_flux"] = float(np.trapz(s, ts_w))
+    feat["soft_integrated_flux"] = _trapz(s, ts_w)
 
     s_grad = np.gradient(s, ts_w) if len(s) > 1 else np.zeros(1)
     feat["soft_rise_rate"]  = float(np.max(s_grad))
@@ -201,7 +211,7 @@ def _extract_window_features(
     feat["hard_skewness"]        = _skew_np(h)
     feat["hard_kurtosis"]        = _kurt_np(h)
     feat["hard_signal_energy"]   = float(np.sum(h ** 2))
-    feat["hard_integrated_flux"] = float(np.trapz(h, ts_w))
+    feat["hard_integrated_flux"] = _trapz(h, ts_w)
 
     h_grad = np.gradient(h, ts_w) if len(h) > 1 else np.zeros(1)
     feat["hard_rise_rate"]  = float(np.max(h_grad))
@@ -341,7 +351,7 @@ class RollingFeatureExtractor:
             try:
                 feat = _extract_window_features(s_w, h_w, ts_w)
             except Exception as exc:
-                logger.debug("Window t=%d failed: %s", t, exc)
+                logger.warning("Window t=%d failed: %s — skipping window", t, exc)
                 continue
 
             feat["TIME"] = float(timestamps[t])
