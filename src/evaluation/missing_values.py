@@ -59,10 +59,10 @@ class MissingValues:
         # SAVE CSV
         ##################################################
 
+        csv_path = self.output_dir / Path(CONFIG["files"]["missing_values_csv"]).name
         report.to_csv(
 
-            self.output_dir /
-            Path(CONFIG["files"]["missing_values_csv"]).name,
+            csv_path,
 
             index=False,
 
@@ -104,10 +104,10 @@ class MissingValues:
 
         plt.tight_layout()
 
+        png_path = self.output_dir / Path(CONFIG["files"]["missing_values_png"]).name
         plt.savefig(
 
-            self.output_dir /
-            Path(CONFIG["files"]["missing_values_png"]).name,
+            png_path,
 
             dpi=300,
 

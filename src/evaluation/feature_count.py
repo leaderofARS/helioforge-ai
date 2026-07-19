@@ -53,9 +53,9 @@ class FeatureCountPlot:
 
         plt.tight_layout()
 
+        plot_path = self.output_dir / Path(CONFIG["files"]["feature_count_png"]).name
         plt.savefig(
-            self.output_dir
-            / Path(CONFIG["files"]["feature_count_png"]).name,
+            plot_path,
             dpi=300,
         )
 

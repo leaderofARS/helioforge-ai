@@ -67,6 +67,7 @@ def main() -> int:
         print("[STAGE] Running visualization pipeline")
         pipeline = VisualizationPipeline()
         pipeline.run(
+            dataframe,
             selected_dataframe,
             original_features,
             variance_features,

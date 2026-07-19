@@ -372,7 +372,7 @@ class FeatureDistribution:
 
         plt.tight_layout(
 
-            rect=[0, 0, 1, 0.96]
+            rect=(0, 0, 1, 0.96)
 
         )
 
@@ -380,11 +380,10 @@ class FeatureDistribution:
         # SAVE
         ##################################################
 
+        dist_path = self.output_dir / f"{group_name}_distribution.png"
         plt.savefig(
 
-            self.output_dir /
-
-            f"{group_name}_distribution.png",
+            dist_path,
 
             dpi=300,
 

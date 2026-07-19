@@ -112,10 +112,10 @@ class PCAAnalysis:
 
         })
 
+        pca_csv_path = self.output_dir / Path(CONFIG["files"]["pca_summary_csv"]).name
         summary.to_csv(
 
-            self.output_dir /
-            Path(CONFIG["files"]["pca_summary_csv"]).name,
+            pca_csv_path,
 
             index=False,
 
@@ -156,10 +156,10 @@ class PCAAnalysis:
 
         plt.tight_layout()
 
+        explained_png_path = self.output_dir / Path(CONFIG["files"]["pca_explained_variance_png"]).name
         plt.savefig(
 
-            self.output_dir /
-            Path(CONFIG["files"]["pca_explained_variance_png"]).name,
+            explained_png_path,
 
             dpi=300,
 
@@ -206,10 +206,10 @@ class PCAAnalysis:
 
         plt.tight_layout()
 
+        cumulative_png_path = self.output_dir / Path(CONFIG["files"]["pca_cumulative_variance_png"]).name
         plt.savefig(
 
-            self.output_dir /
-            Path(CONFIG["files"]["pca_cumulative_variance_png"]).name,
+            cumulative_png_path,
 
             dpi=300,
 
@@ -249,10 +249,10 @@ class PCAAnalysis:
 
             plt.tight_layout()
 
+            projection_png_path = self.output_dir / Path(CONFIG["files"]["pca_projection_png"]).name
             plt.savefig(
 
-                self.output_dir /
-                Path(CONFIG["files"]["pca_projection_png"]).name,
+                projection_png_path,
 
                 dpi=300,
 

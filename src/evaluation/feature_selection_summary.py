@@ -77,10 +77,10 @@ class FeatureSelectionSummary:
         # SAVE CSV
         ##################################################
 
+        csv_path = self.output_dir / Path(CONFIG["files"]["feature_selection_summary_csv"]).name
         summary.to_csv(
 
-            self.output_dir /
-            Path(CONFIG["files"]["feature_selection_summary_csv"]).name,
+            csv_path,
 
             index=False,
 
@@ -148,11 +148,10 @@ class FeatureSelectionSummary:
 
         plt.tight_layout()
 
+        png_path = self.output_dir / Path(CONFIG["files"]["feature_selection_summary_png"]).name
         plt.savefig(
 
-            self.output_dir /
-
-            Path(CONFIG["files"]["feature_selection_summary_png"]).name,
+            png_path,
 
             dpi=300,
 

@@ -14,6 +14,7 @@ Author: HelioForge AI
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -154,22 +155,20 @@ class CorrelationHeatmap:
             dataframe,
             prefixes,
         )
-        
-        if len(columns) < 2:
+
+        if len(columns) == 0:
             return
 
-        correlation = dataframe[
+        correlation = cast(pd.DataFrame, dataframe[
             columns
-        ].corr()
+        ]).corr()
 
         ##################################################
         # SAVE CORRELATION MATRIX
         ##################################################
 
-        correlation.to_csv(
-            self.output_dir /
-            f"{group_name}_{Path(CONFIG['files']['correlation_matrix_csv']).name}"
-        )
+        csv_path = self.output_dir / f"{group_name}_{Path(CONFIG['files']['correlation_matrix_csv']).name}"
+        correlation.to_csv(csv_path)
 
         ##################################################
         # ADAPTIVE FIGURE SIZE
@@ -186,6 +185,28 @@ class CorrelationHeatmap:
             6,
             n * 0.9,
         )
+
+        heatmap_path = self.output_dir / f"{group_name}_{Path(CONFIG['files']['correlation_heatmap_png']).name}"
+
+        if len(columns) == 1:
+            plt.figure(figsize=(4, 3))
+            plt.text(
+                0.5,
+                0.5,
+                f"Only one feature available for {group_name}",
+                ha="center",
+                va="center",
+                fontsize=10,
+            )
+            plt.axis("off")
+            plt.tight_layout()
+            plt.savefig(
+                heatmap_path,
+                dpi=300,
+                bbox_inches="tight",
+            )
+            plt.close()
+            return
 
         plt.figure(
             figsize=(width, height),
@@ -225,11 +246,10 @@ class CorrelationHeatmap:
             pad=20,
         )
 
-        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.tight_layout(rect=(0, 0, 1, 0.96))
 
         plt.savefig(
-            self.output_dir /
-            f"{group_name}_{Path(CONFIG['files']['correlation_heatmap_png']).name}",
+            heatmap_path,
             dpi=300,
             bbox_inches="tight",
         )
@@ -253,11 +273,15 @@ class CorrelationHeatmap:
             prefixes,
         )
 
+        top_csv_path = self.output_dir / f"{group_name}_{Path(CONFIG['files']['top_correlations_csv']).name}"
+
         if len(columns) < 2:
+            with open(top_csv_path, "w", encoding="utf-8") as f:
+                f.write("Feature 1,Feature 2,Correlation\n")
             return
 
         correlation = (
-            dataframe[columns]
+            cast(pd.DataFrame, dataframe[columns])
             .corr()
             .abs()
         )
@@ -281,6 +305,8 @@ class CorrelationHeatmap:
                     )
 
         if len(rows) == 0:
+            with open(top_csv_path, "w", encoding="utf-8") as f:
+                f.write("Feature 1,Feature 2,Correlation\n")
             return
 
         top = (
@@ -293,8 +319,7 @@ class CorrelationHeatmap:
         )
 
         top.to_csv(
-            self.output_dir
-            / f"{group_name}_{Path(CONFIG['files']['top_correlations_csv']).name}",
+            top_csv_path,
             index=False,
         )
 

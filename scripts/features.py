@@ -8,8 +8,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from src.features.feature_pipeline import FeaturePipeline
 from src.features.feature_selector import FeatureSelector
-from src.ingestion.dataset_builder import DatasetBuilder
 from src.ingestion.dataset_exporter import DatasetExporter
 from src.ingestion.observation_loader import ObservationLoader
 from src.utils.config import CONFIG, get_path
@@ -38,22 +38,27 @@ def main() -> int:
 
         logger.info("Building feature dataset")
         print("[STAGE] Extracting features for each observation")
-        builder = DatasetBuilder()
+        pipeline = FeaturePipeline()
+        rows = []
 
         for index, observation in enumerate(loader.load_all(), start=1):
             print(f"[STAGE] Extracting features for observation {index}: {observation['solexs_id']} / {observation['hel1os_id']}")
-            builder.add_sample(
+            features = pipeline.run(
                 observation["soft_signal"],
                 observation["hard_signal"],
                 observation["timestamps"],
-                observation["solexs_id"],
-                observation["hel1os_id"],
             )
+            row = {
+                "solexs_observation_id": observation["solexs_id"],
+                "hel1os_observation_id": observation["hel1os_id"],
+            }
+            row.update(features)
+            rows.append(row)
 
-        if not builder.rows:
+        if not rows:
             raise RuntimeError("No observations were loaded from the processed directories")
 
-        dataframe = builder.build()
+        dataframe = __import__("pandas").DataFrame(rows)
 
         logger.info("Running feature selection pipeline")
         print("[STAGE] Applying variance and correlation filters")

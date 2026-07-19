@@ -63,6 +63,8 @@ class VisualizationPipeline:
 
         dataframe: pd.DataFrame,
 
+        selected_dataframe: pd.DataFrame,
+
         original_features: int,
 
         variance_features: int,
@@ -104,7 +106,7 @@ class VisualizationPipeline:
         ##################################################
 
         self.distribution.run(
-            dataframe
+            selected_dataframe
         )
 
         ##################################################
