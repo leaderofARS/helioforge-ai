@@ -55,49 +55,70 @@ def locate_hel1os_files():
 
     print_heading("Locating HEL1OS Files")
 
-    observations = []
+    # HEL1OS_DIR layout (55 GB dataset):
+    #   hel1os/
+    #     hel1os_2026Jun26T*/           ← download batch folder
+    #       HLS_<date>_<dur>sec_lev1_V{111,211}/      ← top-level obs name
+    #         <YYYY>/<MM>/<DD>/
+    #           HLS_<date>_<dur>sec_lev1_V{111,211}/  ← repeated folder (actual data)
+    #             events/  evt.fits
+    #             aux/     gticdte1.fits  hk.fits
+    #
+    # rglob("HLS_*_lev1_V*") matches BOTH levels.
+    # We deduplicate by observation name and keep only the dir that
+    # actually contains evt.fits underneath it.
 
-    # Search every HEL1OS observation directory
-    for observation_dir in HEL1OS_DIR.rglob("HLS_*_lev1_V111"):
+    seen: dict[str, dict] = {}   # obs_name → record
 
-        event = next(observation_dir.rglob("evt.fits"), None)
-        gti = next(observation_dir.rglob("gticdte1.fits"), None)
-        housekeeping = next(observation_dir.rglob("hk.fits"), None)
+    for candidate in sorted(HEL1OS_DIR.rglob("HLS_*_lev1_V*")):
 
-        # Skip incomplete observations
-        if not (event and gti and housekeeping):
-
-            print(f"Skipping incomplete observation: {observation_dir.name}")
+        if not candidate.is_dir():
             continue
 
-        # Skip empty observations
+        obs_name = candidate.name
+
+        # Skip if we already resolved this observation to a valid record
+        if obs_name in seen:
+            continue
+
+        event        = next(candidate.rglob("evt.fits"),        None)
+        gti          = next(candidate.rglob("gticdte1.fits"),   None)
+        housekeeping = next(candidate.rglob("hk.fits"),         None)
+
+        # Skip if any required file is missing
+        if not (event and gti and housekeeping):
+            continue
+
+        # Skip empty files
         if (
             event.stat().st_size == 0
             or gti.stat().st_size == 0
             or housekeeping.stat().st_size == 0
         ):
-
-            print(f"Skipping empty observation: {observation_dir.name}")
+            print(f"Skipping empty observation: {obs_name}")
             continue
 
-        observations.append({
-            "name": observation_dir.name,
-            "path": observation_dir,
-            "event": event,
-            "gti": gti,
-            "housekeeping": housekeeping
+        seen[obs_name] = {
+            "name":         obs_name,
+            "path":         candidate,
+            "event":        event,
+            "gti":          gti,
+            "housekeeping": housekeeping,
+        }
 
-        })
+    observations = list(seen.values())
 
     print(f"\nFound {len(observations)} complete HEL1OS observations.")
 
     if not observations:
-
         raise FileNotFoundError(
-            "No valid HEL1OS observations found."
+            f"No valid HEL1OS observations found under {HEL1OS_DIR}.\n"
+            "Expected structure: hel1os/<batch>/HLS_*_lev1_V*/<YYYY>/<MM>/<DD>/"
+            "HLS_*_lev1_V*/{events/evt.fits, aux/gticdte1.fits, aux/hk.fits}"
         )
 
     success("HEL1OS files located.")
+
 
     return observations
 
