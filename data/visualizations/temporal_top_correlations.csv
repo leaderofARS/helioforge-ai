@@ -1,0 +1,22 @@
+Feature 1,Feature 2,Correlation
+autocorr_lag1,autocorr_lag5,0.9999661028741442
+autocorr_lag1,autocorr_lag10,0.9999419494385954
+autocorr_lag5,autocorr_lag10,0.9998193377268569
+autocorr_lag10,coefficient_of_variation,0.9995873263510604
+autocorr_lag1,coefficient_of_variation,0.9992197820638914
+autocorr_lag5,coefficient_of_variation,0.998860726021179
+trend_r2,peak_density,0.997772576384298
+peak_density,energy_growth,0.9912209112699683
+signal_energy_density,peak_frequency_magnitude,0.9829584055557574
+trend_r2,energy_growth,0.9801932396027588
+trend_slope,duration,0.977470370140157
+longest_rising_streak,rolling_std,0.9722471061858793
+trend_r2,zero_crossing_rate,0.9636769458993184
+zero_crossing_rate,peak_frequency_magnitude,0.9455164417830009
+trend_slope,rolling_std,0.9445824557911633
+autocorr_lag5,energy_growth,0.9445011292973154
+zero_crossing_rate,peak_density,0.9437148217374064
+autocorr_lag1,energy_growth,0.9417642899404235
+autocorr_lag10,energy_growth,0.9380863153595224
+energy_growth,coefficient_of_variation,0.9277484962870032
+longest_rising_streak,coefficient_of_variation,0.908531286911828

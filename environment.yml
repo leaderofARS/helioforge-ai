@@ -452,6 +452,7 @@ dependencies:
       - networkx==3.6.1
       - nvidia-nccl-cu12==2.30.7
       - opencv-python==5.0.0.93
+      - openpyxl==3.1.5
       - protobuf==7.35.1
       - pydeck==0.9.3
       - python-multipart==0.0.32
