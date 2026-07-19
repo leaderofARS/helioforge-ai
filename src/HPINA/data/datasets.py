@@ -215,6 +215,69 @@ class WindowGenerator:
         return results
 
 
+class MultivariateFeatureWindowGenerator:
+    """
+    Slices multi-feature observation matrices X in R^(T x F) into 3D temporal sliding windows W_t in R^(F x L),
+    strictly implementing the mathematical formulation of Chapter 1 (L=512, F=38 or F=79).
+    """
+
+    def __init__(
+        self,
+        window_size: int = 512,
+        stride: int = 32,
+        train_ratio: float = 0.70,
+        val_ratio: float = 0.15,
+        test_ratio: float = 0.15,
+        output_dir: Path | None = None,
+    ) -> None:
+        self.window_size = window_size
+        self.stride = stride
+        self.train_ratio = train_ratio
+        self.val_ratio = val_ratio
+        self.test_ratio = test_ratio
+        self.output_dir = output_dir if output_dir is not None else PATH_CFG.windows.root
+
+    def slice_matrix(self, feature_matrix: np.ndarray) -> np.ndarray:
+        """
+        Parameters
+        ----------
+        feature_matrix : np.ndarray
+            Matrix X of shape (T, F) where T is time steps and F is feature count (e.g. 38 or 79).
+
+        Returns
+        -------
+        np.ndarray
+            3D sliding window tensor of shape (N_windows, F, L)
+        """
+        T, F = feature_matrix.shape
+        if T < self.window_size:
+            return np.empty((0, F, self.window_size), dtype=np.float32)
+
+        # Sanitize NaNs/Infs
+        clean_matrix = np.nan_to_num(feature_matrix, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Normalize per feature column safely
+        f_min = np.min(clean_matrix, axis=0, keepdims=True)
+        f_max = np.max(clean_matrix, axis=0, keepdims=True)
+        f_range = np.where((f_max - f_min) > 1e-8, f_max - f_min, 1.0)
+        norm_matrix = (clean_matrix - f_min) / f_range  # Shape (T, F)
+
+        # Transpose to (F, T) for PyTorch 1D Causal Conv (Channels-First layout)
+        norm_matrix_t = norm_matrix.T.astype(np.float32)
+
+        windows = []
+        for start in range(0, T - self.window_size + 1, self.stride):
+            end = start + self.window_size
+            window = norm_matrix_t[:, start:end]  # Shape (F, L)
+            if not np.isnan(window).any() and not np.isinf(window).any():
+                windows.append(window)
+
+        if not windows:
+            return np.empty((0, F, self.window_size), dtype=np.float32)
+
+        return np.stack(windows, axis=0)
+
+
 if __name__ == "__main__":
     generator = WindowGenerator(window_size=512, stride=32)
     generator.generate_all()
