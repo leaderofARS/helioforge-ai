@@ -77,6 +77,17 @@ _FILE_MAP: dict[str, Path] = {
     # observation-level filenames (relative, not absolute)
     "observation_lightcurve":    Path("lightcurve.csv"),
     "observation_event":         Path("event.csv"),
+    # visualization output file aliases
+    "feature_count_png":             Path("feature_count.png"),
+    "feature_selection_summary_csv": Path("feature_selection_summary.csv"),
+    "feature_selection_summary_png": Path("feature_selection_summary.png"),
+    "missing_values_csv":            Path("missing_values_summary.csv"),
+    "missing_values_png":            Path("missing_values.png"),
+    "pca_summary_csv":               Path("pca_summary.csv"),
+    "pca_explained_variance_png":    Path("pca_explained_variance.png"),
+    "pca_cumulative_variance_png":   Path("pca_cumulative_variance.png"),
+    "pca_projection_png":            Path("pca_projection.png"),
+    "correlation_heatmap_png":       Path("correlation_heatmap.png"),
 }
 
 # ─── Export aliases ──────────────────────────────────────────────────────────
