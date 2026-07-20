@@ -193,11 +193,13 @@ def main() -> int:
             use_feature_importance=False,
         )
 
-        # Re-attach TIME column to selected features
+        # Re-attach TIME and observation_id metadata columns to selected features
+        meta_df = full_df[["TIME", "observation_id"]].reset_index(drop=True)
         final_df = pd.concat(
-            [full_df["TIME"].reset_index(drop=True), selected_df.reset_index(drop=True)],
+            [meta_df, selected_df.reset_index(drop=True)],
             axis=1,
         )
+
 
         # ── Export selected_features ──────────────────────────────────────────
         logger.info("Exporting selected_features …")

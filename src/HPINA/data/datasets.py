@@ -423,36 +423,17 @@ class MultivariateFeatureWindowGenerator(_BaseWindowGenerator):
     # Feature matrix loading
     # ------------------------------------------------------------------
 
-    def _load_feature_matrix(self) -> Tuple[np.ndarray, List[str]]:
-        """
-        Load the feature CSV and return (matrix, feature_names).
-
-        Returns
-        -------
-        matrix : np.ndarray  shape (T, F)
-        feature_names : list[str]  length F
-        """
+    def _load_feature_dataframe(self) -> pd.DataFrame:
+        """Load the feature CSV as a pandas DataFrame."""
         if not self.features_csv.exists():
             raise FileNotFoundError(
                 f"Feature CSV not found: {self.features_csv}\n"
                 "Run  python scripts/features.py  first to generate it."
             )
-        df = pd.read_csv(self.features_csv)
-
-        # Drop time and any fully-NaN columns
-        feature_cols = [c for c in df.columns if c != self.time_col]
-        df_feats     = df[feature_cols].select_dtypes(include=[np.number]).dropna(axis=1, how="all")
-        feature_names = list(df_feats.columns)
-        matrix        = df_feats.to_numpy(dtype=np.float64)
-
-        logger.info(
-            "Loaded feature matrix: shape=%s  F=%d  file=%s",
-            matrix.shape, len(feature_names), self.features_csv.name,
-        )
-        return matrix, feature_names
+        return pd.read_csv(self.features_csv)
 
     # ------------------------------------------------------------------
-    # Scaler persistence
+    # Scaler persistence & window slicing helpers
     # ------------------------------------------------------------------
 
     def _scaler_path(self, F: int) -> Path:
@@ -485,33 +466,18 @@ class MultivariateFeatureWindowGenerator(_BaseWindowGenerator):
         )
         return (matrix - self._train_min) / rng
 
-    # ------------------------------------------------------------------
-    # Windowing — operates on a 2-D (T, F) matrix (already normalised)
-    # ------------------------------------------------------------------
-
     def _slice_normalised_matrix(self, norm_matrix: np.ndarray) -> np.ndarray:
-        """
-        Parameters
-        ----------
-        norm_matrix : np.ndarray  shape (T, F) — already normalised
-
-        Returns
-        -------
-        np.ndarray  shape (N_windows, F, window_size)
-        """
+        """Slice 2D matrix (T, F) into 3D window array (N_windows, F, window_size)."""
         T, F = norm_matrix.shape
         if T < self.window_size:
             return np.empty((0, F, self.window_size), dtype=np.float32)
 
-        # Channels-first layout: (F, T)
         mat_t = norm_matrix.T.astype(np.float32)
-
         windows = [
             mat_t[:, s : s + self.window_size]
             for s in range(0, T - self.window_size + 1, self.stride)
         ]
         valid = [w for w in windows if not np.isnan(w).any() and not np.isinf(w).any()]
-
         if not valid:
             return np.empty((0, F, self.window_size), dtype=np.float32)
         return np.stack(valid, axis=0)
@@ -520,37 +486,89 @@ class MultivariateFeatureWindowGenerator(_BaseWindowGenerator):
     # Public entry point
     # ------------------------------------------------------------------
 
+
     def generate_all(
         self,
         observations: Optional[List[dict]] = None,  # unused — kept for API symmetry
     ) -> dict[str, torch.Tensor]:
         """
         Full pipeline:
-          1. Load feature matrix from CSV.
-          2. Split rows into train / val / test proportions.
+          1. Load feature DataFrame from CSV.
+          2. Perform Stratified Observation-Level Splitting by observation peak flare class.
           3. Fit scaler on train split only; persist to JSON.
           4. Normalise all three splits with train scaler.
           5. Slice each split into sliding windows.
           6. Save train.pt, val.pt, test.pt and return tensors.
         """
-        matrix, feature_names = self._load_feature_matrix()
-        self._feature_names   = feature_names
-        T, F = matrix.shape
+        df = self._load_feature_dataframe()
+        meta_cols = {self.time_col, "observation_id"}
+        feature_cols = [c for c in df.columns if c not in meta_cols]
+        df_feats = df[feature_cols].select_dtypes(include=[np.number]).dropna(axis=1, how="all")
+        self._feature_names = list(df_feats.columns)
+        feature_cols = self._feature_names
+        F = len(feature_cols)
 
-        # Sanitize globally before splitting
-        matrix = np.nan_to_num(matrix, nan=0.0, posinf=0.0, neginf=0.0)
+        # Sanitize feature columns globally before splitting
+        df[feature_cols] = np.nan_to_num(df[feature_cols].to_numpy(), nan=0.0, posinf=0.0, neginf=0.0)
 
-        # Observation-level row split (proportional)
-        n_train = int(T * self.train_ratio)
-        n_val   = int(T * self.val_ratio)
+        # Stratified Observation-Level Split vs Fallback
+        if "observation_id" in df.columns and df["observation_id"].nunique() > 1:
+            logger.info("Performing Stratified Observation-Level Splitting across %d observations …", df["observation_id"].nunique())
+            
+            # Reconstruct peak flux per observation to determine flare class
+            peak_col = "soft_mean" if "soft_mean" in df.columns else feature_cols[0]
+            obs_summary = df.groupby("observation_id")[peak_col].max().reset_index()
 
-        train_mat = matrix[:n_train]
-        val_mat   = matrix[n_train : n_train + n_val]
-        test_mat  = matrix[n_train + n_val :]
+            def _get_flare_class(max_val: float) -> str:
+                if max_val < 100: return "Quiet"
+                elif max_val < 500: return "B"
+                elif max_val < 2000: return "C"
+                elif max_val < 8000: return "M"
+                else: return "X"
+
+            obs_summary["flare_class"] = obs_summary[peak_col].apply(_get_flare_class)
+
+            train_obs, val_obs, test_obs = [], [], []
+            rng = np.random.RandomState(42)
+
+            for cls_name, group in obs_summary.groupby("flare_class"):
+                obs_list = group["observation_id"].tolist()
+                rng.shuffle(obs_list)
+                n = len(obs_list)
+                n_tr = max(1, int(round(n * self.train_ratio))) if n >= 3 else (1 if n > 1 else n)
+                n_va = 1 if (n >= 3 and n - n_tr >= 2) else 0
+                n_te = n - n_tr - n_va
+
+                train_obs.extend(obs_list[:n_tr])
+                val_obs.extend(obs_list[n_tr : n_tr + n_va])
+                test_obs.extend(obs_list[n_tr + n_va :])
+
+            logger.info(
+                "Stratified Observation Split — Train: %d obs, Val: %d obs, Test: %d obs",
+                len(train_obs), len(val_obs), len(test_obs),
+            )
+
+            train_df = df[df["observation_id"].isin(train_obs)]
+            val_df   = df[df["observation_id"].isin(val_obs)]
+            test_df  = df[df["observation_id"].isin(test_obs)]
+
+            train_mat = train_df[feature_cols].to_numpy(dtype=np.float64)
+            val_mat   = val_df[feature_cols].to_numpy(dtype=np.float64)
+            test_mat  = test_df[feature_cols].to_numpy(dtype=np.float64)
+        else:
+            # Fallback for single-observation or missing observation_id
+            matrix = df[feature_cols].to_numpy(dtype=np.float64)
+            T = len(matrix)
+            n_train = int(T * self.train_ratio)
+            n_val   = int(T * self.val_ratio)
+
+            train_mat = matrix[:n_train]
+            val_mat   = matrix[n_train : n_train + n_val]
+            test_mat  = matrix[n_train + n_val :]
 
         logger.info(
-            "Feature matrix row split — train: %d  val: %d  test: %d  (T=%d, F=%d)",
-            len(train_mat), len(val_mat), len(test_mat), T, F,
+            "Feature matrix split — train: %d rows  val: %d rows  test: %d rows  (F=%d)",
+            len(train_mat), len(val_mat), len(test_mat), F,
         )
 
         # Fit + persist scaler on train only
@@ -577,6 +595,7 @@ class MultivariateFeatureWindowGenerator(_BaseWindowGenerator):
         print("=" * 60)
 
         return {"train": train_t, "val": val_t, "test": test_t}
+
 
     # ------------------------------------------------------------------
     # _BaseWindowGenerator interface (stubs — not used for feature mode)
