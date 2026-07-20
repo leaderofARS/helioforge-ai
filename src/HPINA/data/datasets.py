@@ -535,13 +535,22 @@ class MultivariateFeatureWindowGenerator(_BaseWindowGenerator):
                 obs_list = group["observation_id"].tolist()
                 rng.shuffle(obs_list)
                 n = len(obs_list)
-                n_tr = max(1, int(round(n * self.train_ratio))) if n >= 3 else (1 if n > 1 else n)
-                n_va = 1 if (n >= 3 and n - n_tr >= 2) else 0
-                n_te = n - n_tr - n_va
+                if n >= 3:
+                    n_tr = max(1, int(round(n * self.train_ratio)))
+                    n_va = 1
+                    n_te = n - n_tr - n_va
+                    if n_te <= 0:
+                        n_tr -= 1
+                        n_te = 1
+                elif n == 2:
+                    n_tr, n_va, n_te = 1, 1, 0
+                else:
+                    n_tr, n_va, n_te = 1, 0, 0
 
                 train_obs.extend(obs_list[:n_tr])
                 val_obs.extend(obs_list[n_tr : n_tr + n_va])
                 test_obs.extend(obs_list[n_tr + n_va :])
+
 
             logger.info(
                 "Stratified Observation Split — Train: %d obs, Val: %d obs, Test: %d obs",
