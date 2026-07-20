@@ -39,20 +39,37 @@ class SolarSequenceDataset(Dataset):
 
 def find_window_files(repo_root: Path) -> tuple[Path, Path, Path, Path]:
     candidates = [
-        repo_root / "data" / "windows_second",
+        Path("/opt/helioforge-ai/data/windows"),
+        repo_root / "data" / "windows_fifth",
+        repo_root / "data" / "windows_fourth",
         repo_root / "data" / "windows_third",
+        repo_root / "data" / "windows_second",
         repo_root / "data" / "windows",
     ]
     for c in candidates:
-        tr = c / "train_feat32_w512.pt"
-        va = c / "val_feat32_w512.pt"
-        te = c / "test_feat32_w512.pt"
-        sc = c / "scaler_f32_w512.json"
-        if tr.exists() and va.exists() and te.exists() and sc.exists():
-            return tr, va, te, sc
-    # Fallback to standard names
-    base = repo_root / "data" / "windows"
-    return base / "train.pt", base / "val.pt", base / "test.pt", base / "scaler_f32_w512.json"
+        for suffix in ["_feat32_w512", ""]:
+            tr = c / f"train{suffix}.pt"
+            va = c / f"val{suffix}.pt"
+            te = c / f"test{suffix}.pt"
+            sc = c / "scaler_f32_w512.json"
+            if tr.exists() and va.exists() and te.exists() and sc.exists():
+                return tr, va, te, sc
+
+    # Second pass: look for tensors even if scaler filename is slightly different
+    for c in candidates:
+        for suffix in ["_feat32_w512", ""]:
+            tr = c / f"train{suffix}.pt"
+            va = c / f"val{suffix}.pt"
+            te = c / f"test{suffix}.pt"
+            if tr.exists() and va.exists() and te.exists():
+                # Locate any json file in c or parent
+                scalers = list(c.glob("scaler*.json")) or list((c.parent).glob("**/scaler*.json"))
+                sc = scalers[0] if scalers else c / "scaler_f32_w512.json"
+                return tr, va, te, sc
+
+    base = Path("/opt/helioforge-ai/data/windows") if Path("/opt/helioforge-ai/data/windows").exists() else repo_root / "data" / "windows"
+    return base / "train_feat32_w512.pt", base / "val_feat32_w512.pt", base / "test_feat32_w512.pt", base / "scaler_f32_w512.json"
+
 
 
 def main() -> int:
@@ -77,9 +94,13 @@ def main() -> int:
     val_seq   = val_data["sequences"]   if isinstance(val_data, dict)   else val_data
     test_seq  = test_data["sequences"]  if isinstance(test_data, dict)  else test_data
 
-    with open(scaler_path, "r", encoding="utf-8") as f:
-        scaler = json.load(f)
+    if scaler_path.exists():
+        with open(scaler_path, "r", encoding="utf-8") as f:
+            scaler = json.load(f)
+    else:
+        scaler = {"min": [0.0] * train_seq.shape[1], "max": [1.0] * train_seq.shape[1]}
     feature_names = scaler.get("feature_names", [f"feat_{i:02d}" for i in range(train_seq.shape[1])])
+
 
     # ─────────────────────────────────────────────────────────────────────────
     # CHECK 1: Per-Feature Normalization Statistics
