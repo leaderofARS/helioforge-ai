@@ -60,10 +60,11 @@ def test_classifier():
         from src.HPINA.models.baseline_tcn.classifier import ClassifierHead
         # Test ClassifierHead if defined
         head = ClassifierHead(in_features=512, n_classes=5)
-        x = torch.randn(2, 512)
+        x = torch.randn(2, 512, 128)  # 3D tensor: (Batch, in_features, sequence_length)
         out = head(x)
         assert out.shape == (2, 5), f"Expected shape (2, 5) but got {out.shape}"
         print("✓ classifier.py tests passed successfully!\n")
+
     except ImportError:
         print("⚠ classifier.py does not contain ClassifierHead yet (skipping).\n")
     except AttributeError:
