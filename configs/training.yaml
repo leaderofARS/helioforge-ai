@@ -2,6 +2,27 @@
 # HelioForge-AI — Baseline TCN Training Configuration
 # Target: EC2 Ubuntu  (ubuntu@ip-172-31-46-7)
 #
+# EC2 HARDWARE CONSTRAINTS:
+#   RAM  : 8 GB total  (OS + Python ~1.5 GB → ~6.5 GB usable)
+#   CPU  : 2 physical cores
+#   GPU  : None
+#
+# Memory budget at default settings (batch=16, 8.4M-param model):
+#   Weights + grads + AdamW moments  :  ~132 MB
+#   Activations (8 blocks, batch=16) :  ~132 MB
+#   Dataset (train + val in RAM)     :  ~150 MB
+#   Python / OS overhead             :  ~800 MB
+#   ──────────────────────────────────────────
+#   Estimated total                  :  ~1.2 GB  (safe within 8 GB)
+#
+# Gradient accumulation:
+#   batch_size=16, accum_steps=2 → effective batch = 32.
+#   Matches full-batch training dynamics with half the activation memory.
+#
+# DataLoader workers:
+#   num_workers=0 — each worker process costs ~300–500 MB RAM.
+#   On a 2-core CPU, workers add IPC overhead. Single-thread is faster.
+#
 # All path values here are informational / overrides for train.py.
 # The script resolves all defaults from configs/data_paths.yaml via PATH_CFG.
 #
@@ -57,12 +78,15 @@ scheduler:
 # Training loop
 # ---------------------------------------------------------------------------
 training:
-  n_epochs   : 80
-  batch_size : 32
-  grad_clip  : 1.0        # max grad norm (clips gradient explosions)
-  label_smooth: 0.0       # label smoothing epsilon (0 = off)
-  seed       : 42
-  num_workers: 4
+  n_epochs    : 80
+  batch_size  : 16         # EC2: 16 to halve activation memory (vs 32)
+  accum_steps : 2          # gradient accumulation → effective batch = 32
+  grad_clip   : 1.0        # max grad norm (prevents explosion on deep TCN)
+  label_smooth: 0.0        # label smoothing epsilon (0 = off)
+  seed        : 42
+  num_workers : 0          # EC2: 0 worker processes (2-core CPU, 8 GB RAM)
+  num_threads : 2          # torch.set_num_threads — match physical cores
+  pin_memory  : false      # EC2: always false — no GPU, wastes RAM
 
 # ---------------------------------------------------------------------------
 # Early stopping
