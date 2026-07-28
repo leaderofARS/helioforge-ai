@@ -1,0 +1,90 @@
+# =============================================================================
+# HelioForge-AI — Baseline TCN Model Configuration
+# Architecture: HelioForgeTCN  (V1 — HPINA Baseline)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Model identity
+# ---------------------------------------------------------------------------
+model:
+  name    : HelioForgeTCN
+  version : 1.0
+  stage   : baseline      # V1 of the HPINA roadmap (V1 → V7)
+
+# ---------------------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------------------
+input:
+  in_channels : 32        # F=32 physics-informed features from HEL1OS + SoLEXS
+  window_size : 512       # L=512 timesteps per window (~8.5 min at 1 Hz)
+
+# ---------------------------------------------------------------------------
+# TCN Encoder  (tcn_encoder.py)
+# ---------------------------------------------------------------------------
+encoder:
+  n_blocks   : 8          # 8 dilated residual blocks
+  kernel_size: 3          # causal conv kernel (all blocks)
+  dilations  : [1, 2, 4, 8, 16, 32, 64, 128]
+  channel_schedule:
+    - [32,  128]          # block 1: in→out channels
+    - [128, 256]          # block 2
+    - [256, 256]          # block 3
+    - [256, 512]          # block 4
+    - [512, 512]          # blocks 5–8
+  out_channels      : 512
+  receptive_field   : 511 # timesteps = 1 + 2*(1+2+4+8+16+32+64+128)
+  rf_coverage_pct   : 99.8
+  n_params_approx   : 8_400_000
+
+# ---------------------------------------------------------------------------
+# Normalisation  (configurable per run)
+# ---------------------------------------------------------------------------
+normalisation:
+  type    : batch       # "batch" | "layer" | "none"
+  # LayerNorm used for small-batch / non-stationary regimes
+  # BatchNorm is the default and recommended for EC2 GPU training
+
+# ---------------------------------------------------------------------------
+# Regularisation
+# ---------------------------------------------------------------------------
+regularisation:
+  dropout_encoder   : 0.2   # applied inside each residual block
+  dropout_head      : 0.3   # applied inside the classifier MLP (fixed)
+
+# ---------------------------------------------------------------------------
+# Classifier Head  (classifier.py)
+# ---------------------------------------------------------------------------
+classifier_head:
+  global_avg_pool : true
+  layers:
+    - [512, 256]            # Linear + ReLU + Dropout(0.3)
+    - [256, 128]            # Linear + ReLU + Dropout(0.3)
+    - [128,   5]            # Linear (output logits, no activation)
+  n_classes: 5
+
+# ---------------------------------------------------------------------------
+# Output classes
+# ---------------------------------------------------------------------------
+classes:
+  0: Quiet        # < 100 COUNTS/sec
+  1: B-class      # 100 – 500 COUNTS/sec
+  2: C-class      # 500 – 2,000 COUNTS/sec
+  3: M-class      # 2,000 – 8,000 COUNTS/sec
+  4: X-class      # >= 8,000 COUNTS/sec
+
+# ---------------------------------------------------------------------------
+# Primary metric for model selection
+# ---------------------------------------------------------------------------
+evaluation:
+  primary_metric     : macro_f1     # main checkpoint criterion
+  secondary_metric   : val_loss
+  report_per_class   : true
+  report_confusion   : true
+
+# ---------------------------------------------------------------------------
+# Saved weights location  (resolved from data_paths.yaml)
+# ---------------------------------------------------------------------------
+weights:
+  best_macro_f1 : /opt/helioforge-ai/experiments/baseline_tcn/checkpoints/best_macro_f1.pt
+  best_val_loss : /opt/helioforge-ai/experiments/baseline_tcn/checkpoints/best_val_loss.pt
+  final         : /opt/helioforge-ai/experiments/baseline_tcn/checkpoints/final.pt

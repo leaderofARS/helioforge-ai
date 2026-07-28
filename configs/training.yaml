@@ -1,0 +1,92 @@
+# =============================================================================
+# HelioForge-AI — Baseline TCN Training Configuration
+# Target: EC2 Ubuntu  (ubuntu@ip-172-31-46-7)
+#
+# All path values here are informational / overrides for train.py.
+# The script resolves all defaults from configs/data_paths.yaml via PATH_CFG.
+#
+# Usage:
+#   python scripts/train.py   ← uses PATH_CFG defaults (no args needed)
+#
+# To override a single value:
+#   python scripts/train.py --lr 3e-4 --norm-type layer --run-name ablation_1
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Data  (resolved from data_paths.yaml — shown here for reference)
+# ---------------------------------------------------------------------------
+data:
+  windows_dir : /opt/helioforge-ai/data/windows
+  train_file  : train_feat32_w512.pt
+  val_file    : val_feat32_w512.pt
+  scaler_file : scaler_f32_w512.json
+
+  # Label derivation — performed on-the-fly from scaler + peak flux
+  # channel 0 (soft_mean) → reverse MinMax → physical COUNTS/sec
+  # Thresholds: [100, 500, 2000, 8000]  →  classes [0=Quiet, 1=B, 2=C, 3=M, 4=X]
+  label_source : soft_mean_peak_counts
+  soft_channel : 0
+
+# ---------------------------------------------------------------------------
+# Output paths  (resolved from data_paths.yaml — shown here for reference)
+# ---------------------------------------------------------------------------
+output:
+  runs_dir        : /opt/helioforge-ai/experiments/baseline_tcn/runs
+  checkpoints_dir : /opt/helioforge-ai/experiments/baseline_tcn/checkpoints
+  logs_dir        : /opt/helioforge-ai/logs
+  training_log    : /opt/helioforge-ai/logs/training.log
+
+# ---------------------------------------------------------------------------
+# Optimizer
+# ---------------------------------------------------------------------------
+optimizer:
+  name         : AdamW
+  lr           : 1.0e-3
+  weight_decay : 1.0e-4
+
+# ---------------------------------------------------------------------------
+# Scheduler
+# ---------------------------------------------------------------------------
+scheduler:
+  name    : ReduceLROnPlateau
+  mode    : min          # monitor val_loss
+  factor  : 0.5          # halve LR on plateau
+  patience: 7            # = patience // 2 (see early_stopping.patience)
+
+# ---------------------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------------------
+training:
+  n_epochs   : 80
+  batch_size : 32
+  grad_clip  : 1.0        # max grad norm (clips gradient explosions)
+  label_smooth: 0.0       # label smoothing epsilon (0 = off)
+  seed       : 42
+  num_workers: 4
+
+# ---------------------------------------------------------------------------
+# Early stopping
+# ---------------------------------------------------------------------------
+early_stopping:
+  patience : 15           # epochs without val_loss improvement before stop
+  monitor  : val_loss
+
+# ---------------------------------------------------------------------------
+# Checkpointing
+# ---------------------------------------------------------------------------
+checkpointing:
+  save_best_val_loss : true    # saved as best_val_loss.pt
+  save_best_macro_f1 : true    # saved as best_macro_f1.pt   ← primary model
+  save_final         : true    # saved as final.pt (last epoch)
+  primary_metric     : macro_f1
+
+# ---------------------------------------------------------------------------
+# Class weighting (computed automatically from train split label distribution)
+# ---------------------------------------------------------------------------
+# Formula:  w_c = N_total / (n_classes * N_c)
+# Do NOT hardcode weights here — they are computed at runtime from actual
+# label counts via build_weighted_criterion() in losses.py.
+loss:
+  name             : CrossEntropyLoss
+  class_weighted   : true
+  weight_formula   : "N_total / (n_classes * N_c)"
