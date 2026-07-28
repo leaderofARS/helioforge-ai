@@ -7,7 +7,7 @@
 ## Table of Contents
 
 1. [The Problem](#1-the-problem)
-2. [Dataset Recap](#2-dataset-recap)
+2. [Dataset Versioning & Split Discipline](#2-dataset-versioning--split-discipline)
 3. [Architecture Overview](#3-architecture-overview)
 4. [File-by-File Breakdown](#4-file-by-file-breakdown)
    - [causal_conv.py](#41-causal_convpy)
@@ -18,12 +18,14 @@
    - [losses.py](#46-lossespy)
    - [metrics.py](#47-metricspy)
    - [__init__.py](#48-__init__py)
-5. [Training Loop](#5-training-loop)
-6. [The Maths](#6-the-maths)
-7. [Hyperparameter Reference](#7-hyperparameter-reference)
-8. [Checkpointing Strategy](#8-checkpointing-strategy)
-9. [Interpreting Results](#9-interpreting-results)
-10. [Quick Command Reference](#10-quick-command-reference)
+5. [Training Pipeline & Telemetry](#5-training-pipeline--telemetry)
+6. [Reproducibility & Determinism](#6-reproducibility--determinism)
+7. [Automatic Mixed Precision (AMP)](#7-automatic-mixed-precision-amp)
+8. [The Maths](#8-the-maths)
+9. [Hyperparameter & Ablation Reference](#9-hyperparameter--ablation-reference)
+10. [Checkpointing Strategy](#10-checkpointing-strategy)
+11. [Interpreting Results](#11-interpreting-results)
+12. [Quick Command Reference](#12-quick-command-reference)
 
 ---
 
@@ -33,38 +35,50 @@ We are classifying solar flare intensity from multivariate time-series sensor da
 
 ### Classes
 
-| ID | Name  | Description                                 |
-|----|-------|---------------------------------------------|
-| 0  | Quiet | No significant activity                     |
-| 1  | B     | Minor flare (low energy)                    |
-| 2  | C     | Moderate flare                              |
-| 3  | M     | Strong flare — operational concern          |
-| 4  | X     | Extreme flare — satellite damage risk       |
+| ID | Name  | Physical Threshold (SoLEXS COUNTS/sec) | Description                                 |
+|----|-------|----------------------------------------|---------------------------------------------|
+| 0  | Quiet | `< 100`                                | No significant activity                     |
+| 1  | B     | `100 – 500`                            | Minor flare (low energy)                    |
+| 2  | C     | `500 – 2,000`                          | Moderate flare                              |
+| 3  | M     | `2,000 – 8,000`                        | Strong flare — operational concern          |
+| 4  | X     | `≥ 8,000`                              | Extreme flare — satellite damage risk       |
 
 The key challenge: **extreme class imbalance**. X-class events are catastrophically rare. A naive model that always predicts "Quiet" scores >50% accuracy but is operationally worthless.
 
 ---
 
-## 2. Dataset Recap
+## 2. Dataset Versioning & Split Discipline
+
+### Versioning History
+
+- **`windows_fourth/` (Initial prototype):** Early split iteration (Train: 2009, Val: 238, Test: 406).
+- **`windows_fifth/` / `/opt/helioforge-ai/data/windows/` (Canonical Production Dataset):** The versioned research dataset used for all baseline training and evaluation.
 
 ```
-data/windows_fifth/
-├── train_feat32_w512.pt    →  shape (1840, 32, 512)   ~16 X-class windows
-├── val_feat32_w512.pt      →  shape (406,  32, 512)   ~18 X-class windows
-└── test_feat32_w512.pt     →  shape (406,  32, 512)   ~18 X-class windows
+/opt/helioforge-ai/data/windows/
+├── train_feat32_w512.pt    →  shape (1840, 32, 512)
+├── val_feat32_w512.pt      →  shape (406,  32, 512)
+├── test_feat32_w512.pt     →  shape (406,  32, 512)
+└── scaler_f32_w512.json    →  persisted MinMax bounds (F=32, w=512)
 ```
+
+| Split | Window Count | Class Distribution (Quiet / B / C / M / X) |
+|-------|--------------|--------------------------------------------|
+| **Train** | 1,840 | 644 / 689 / 352 / 139 / 16 |
+| **Val** | 406 | ~18 X-class windows |
+| **Test** | 406 | ~18 X-class windows |
 
 | Axis | Meaning |
 |------|---------|
-| `N` — first  | Number of sliding windows (independent training examples) |
+| `N` — first | Number of sliding windows (independent training examples) |
 | `F=32` — second | 32 physics-informed features (HEL1OS + SoLEXS channels) |
-| `L=512` — third | 512 timesteps per window (~4.5 hours at 32s stride) |
+| `L=512` — third | 512 timesteps per window (~8.5 minutes at 1 Hz resolution) |
 
 All values are MinMax-normalised to `[0, 1]` per channel using bounds computed on the **train split only**. The same bounds are applied to val and test.
 
-### Splitting discipline
-- Split done at the **observation level** (by full solar event, not by window) to prevent leakage.
-- Overlapping windows from the same observation never appear in two different splits.
+### Splitting Discipline
+- Stratification is enforced at the **observation level** (by full solar event, not by window) to prevent temporal data leakage.
+- Overlapping sliding windows from the same observation never appear in two different splits.
 
 ---
 
@@ -87,7 +101,7 @@ Input Tensor                         (Batch, 32, 512)
 │  ResidualBlock 8 — d=128,512 → 512  (Batch,512,512)  │
 │                                                       │
 │  Receptive Field : 511 timesteps (99.8% of window)   │
-│  Parameters      : ~8.4 million                       │
+│  Parameters      : 8,573,573 parameters               │
 └──────────────────────────────────────────────────────┘
         │
         ▼
@@ -98,7 +112,7 @@ Input Tensor                         (Batch, 32, 512)
         │
         ▼
 ┌──────────────────────────────────────────────────────┐
-│  Classifier Head  [classifier.py]                     │
+│  Classifier Head  [classifier.py] (Configurable)      │
 │                                                       │
 │  Linear(512 → 256) → ReLU → Dropout(0.3)             │
 │  Linear(256 → 128) → ReLU → Dropout(0.3)             │
@@ -109,7 +123,7 @@ Input Tensor                         (Batch, 32, 512)
 Output Logits                    (Batch, 5)
 ```
 
-> **Key insight:** The entire sequence of 512 timesteps is compressed into a single 512-dimensional vector by Global Average Pooling before classification. The TCN has already extracted all temporal patterns; GAP just collapses the time dimension.
+> **Parameter count calculation:** Dynamically evaluated as `sum(p.numel() for p in model.parameters() if p.requires_grad)`. The default `HelioForgeTCN` has **8,573,573** trainable parameters (~8.57M).
 
 ---
 
@@ -119,543 +133,216 @@ Output Logits                    (Batch, 5)
 
 **What it does:** A 1D convolution that is *strictly causal* — at any timestep `t`, the output only depends on inputs at `t` and earlier. Never the future.
 
-**Why this matters:** At deployment time, the future doesn't exist. If the model sees future data during training, it will cheat — achieving falsely high training accuracy but failing on live solar data.
-
 **Implementation:**
 ```
-Normal conv1d (padding='same'):
-    Output[t] = w0*Input[t-1] + w1*Input[t] + w2*Input[t+1]
-                                                ↑ FUTURE LEAK
-
-Causal conv1d (left-pad only):
-    Pad left by P = (kernel_size - 1) × dilation zeros
-    Then run standard conv1d with padding=0
-    Output[t] = w0*Input[t-2d] + w1*Input[t-d] + w2*Input[t]
-                                                  ↑ only past ✓
-```
-
-**Key parameter:** `padding = (kernel_size - 1) * dilation`
-
-For `kernel_size=3, dilation=64`: pad = 2 × 64 = 128 zeros prepended to the left.
-
-**Shape contract:**
-```
-Input:  (Batch, C_in,  L)
-Output: (Batch, C_out, L)   ← same length, always
+Pad left by P = (kernel_size - 1) × dilation zeros
+Then run standard conv1d with padding=0
+Output[t] = w0*Input[t-2d] + w1*Input[t-d] + w2*Input[t]
 ```
 
 ---
 
 ### 4.2 `residual_block.py`
 
-**What it does:** A temporal residual block — the fundamental building unit of the TCN. Stacks two dilated causal convolutions with normalization, activation, and dropout, then adds a skip connection back to the input.
+**What it does:** Stacks two dilated causal convolutions with normalization, activation, and dropout, then adds a skip connection back to the input.
 
-**Why skip connections:** Without them, gradients shrink exponentially as they travel backwards through 8 layers. The skip path gives gradients a direct highway, so even the first layer receives a strong learning signal.
-
-**Block structure:**
-```
-input ──┬─────────────────────────────────────────────► shortcut ─┐
-        │                                                           │
-        └► CausalConv1d → Norm → ReLU → Dropout                   │
-                └► CausalConv1d → Norm → ReLU → Dropout            │
-                        └───────────────────────────────────────── + ►► ReLU ►► output
-```
-
-**Shortcut projection:** If `in_channels ≠ out_channels`, a `1×1 Conv1d` projects the input to the output channel count before adding. If they match, it's an identity pass.
-
-**Normalization options (configurable via `norm_type`):**
-
-| `norm_type` | Layer used | Best for |
-|---|---|---|
-| `"batch"` | `BatchNorm1d` | Large fixed batch sizes, stable training |
-| `"layer"` | `LayerNorm1d` | Small batches, non-stationary time series |
-| `"none"` | `Identity` | Ablation / debugging |
-
-`LayerNorm1d` is a custom wrapper: it transposes `(B, C, L) → (B, L, C)`, applies `nn.LayerNorm(C)`, then transposes back. This is necessary because PyTorch's LayerNorm normalises over the **last** dimension, but in 1D conv data the channel dimension comes second.
-
-**Shape contract:**
-```
-Input:  (Batch, in_channels,  L)
-Output: (Batch, out_channels, L)   ← sequence length preserved
-```
+**Normalization options (configurable via `norm_type`):** `"batch"`, `"layer"`, or `"none"`.
 
 ---
 
 ### 4.3 `tcn_encoder.py`
 
-**What it does:** Stacks 8 `TemporalResidualBlock` instances in sequence, each with a larger dilation than the last. Exposes `self.out_channels` so the downstream `ClassifierHead` knows its input size without hardcoding.
+**What it does:** Stacks 8 `TemporalResidualBlock` instances in sequence with exponential dilations `[1, 2, 4, 8, 16, 32, 64, 128]`.
 
-**Progressive widening schedule:**
+**Cumulative Receptive Field:**
+$$\text{RF} = 1 + (k - 1) \cdot \sum_{i=0}^{7} d_i = 1 + 2 \times 255 = 511 \text{ timesteps}$$
 
-| Block | Dilation | In Ch → Out Ch | Receptive field of this block |
-|-------|----------|----------------|-------------------------------|
-| 1     | 1        | 32 → 128       | 3 timesteps                   |
-| 2     | 2        | 128 → 256      | 5 timesteps                   |
-| 3     | 4        | 256 → 256      | 9 timesteps                   |
-| 4     | 8        | 256 → 512      | 17 timesteps                  |
-| 5     | 16       | 512 → 512      | 33 timesteps                  |
-| 6     | 32       | 512 → 512      | 65 timesteps                  |
-| 7     | 64       | 512 → 512      | 129 timesteps                 |
-| 8     | 128      | 512 → 512      | 257 timesteps                 |
-
-**Total cumulative receptive field:**
-```
-RF = 1 + (kernel_size - 1) × Σ dilations
-   = 1 + (3 - 1) × (1 + 2 + 4 + 8 + 16 + 32 + 64 + 128)
-   = 1 + 2 × 255
-   = 511 timesteps    (99.8% of our L=512 window)
-```
-
-This means: when the model predicts the flare class for a window ending at time `t`, it can draw evidence from up to 511 seconds in the past within that window.
-
-**Shape contract:**
-```
-Input:  (Batch, 32,  512)
-Output: (Batch, 512, 512)   ← channels expanded, sequence unchanged
-```
+> **Interpretation:** When the model classifies a window ending at timestep $t$, it draws evidence from **511 timesteps within the input window** (covering 99.8% of the 512-timestep window). At 1 Hz resolution, 511 timesteps corresponds to ~8.5 minutes of continuous observation history.
 
 ---
 
 ### 4.4 `classifier.py`
 
-**What it does:** Collapses the time dimension and maps the encoder's high-dimensional sequence representation to class logits.
+**What it does:** Collapses the time dimension via Global Average Pooling (`AdaptiveAvgPool1d(1)`), then passes the 512-dim summary vector through a multi-layer perceptron (MLP).
 
-**Step by step:**
+**Configurable Head Capacity (`head_dims`):**
+To facilitate ablation studies, hidden layer dimensions are fully configurable:
+```python
+head = ClassifierHead(
+    in_features=512,
+    n_classes=5,
+    dropout=0.3,
+    head_dims=[256, 128]   # Default: 512 → 256 → 128 → 5
+)
 ```
-(Batch, 512, 512)           ← encoder output: 512 channels × 512 timesteps
-        ↓  AdaptiveAvgPool1d(1)
-(Batch, 512, 1)             ← every channel's average over all 512 timesteps
-        ↓  Flatten()
-(Batch, 512)                ← single 512-dim summary vector per example
-        ↓  Linear(512→256) → ReLU → Dropout(0.3)
-(Batch, 256)
-        ↓  Linear(256→128) → ReLU → Dropout(0.3)
-(Batch, 128)
-        ↓  Linear(128→5)
-(Batch, 5)                  ← raw logits, one per flare class
-```
-
-**Global Average Pooling intuition:** Instead of taking just the last timestep (which would waste 511 steps of context) or flattening everything (which would make the Linear layers huge), GAP takes the mean across all 512 timesteps. Every timestep contributes equally to the final representation.
-
-> **Output:** Raw *logits*, not probabilities. Apply `torch.softmax(..., dim=1)` if you need class probabilities for inference, or just `torch.argmax(..., dim=1)` for the predicted class.
 
 ---
 
 ### 4.5 `model.py`
 
-**What it does:** The top-level container. Wires `TCNEncoder` and `ClassifierHead` together. This is the only class you need to instantiate for training or inference.
+**What it does:** Top-level `HelioForgeTCN` container wiring `TCNEncoder` and `ClassifierHead` together.
 
 ```python
 from src.HPINA.models.baseline_tcn import HelioForgeTCN
 
 model = HelioForgeTCN(
-    in_channels=32,       # matches our F=32 feature count
-    n_classes=5,          # Quiet, B, C, M, X
-    dropout=0.2,          # encoder dropout
-    norm_type="batch",    # "batch" | "layer" | "none"
+    in_channels=32,
+    n_classes=5,
+    dropout=0.2,
+    norm_type="batch",
+    head_dims=[256, 128],   # Configurable classifier head
 )
-
-# Inference:
-x      = torch.randn(32, 32, 512)   # batch of 32 windows
-logits = model(x)                    # shape: (32, 5)
-preds  = logits.argmax(dim=1)        # shape: (32,)  — class index per window
 ```
-
-**The classifier head always uses `dropout=0.3`** regardless of the encoder dropout setting, since the MLP head is smaller and benefits from stronger regularisation.
 
 ---
 
 ### 4.6 `losses.py`
 
-**The problem:** With extreme class imbalance (X-class has ~16 training windows vs. hundreds of Quiet windows), standard cross-entropy treats every mistake equally. The model quickly learns to predict "Quiet" for everything and stops improving.
-
 **Solution: Class-Weighted Cross-Entropy Loss**
 
 $$\mathcal{L} = -\sum_{c=0}^{4} w_c \cdot y_c \cdot \log(\hat{p}_c)$$
 
-where the weight for class $c$ is:
+where weights are **computed dynamically per run from the active training split**:
 
 $$w_c = \frac{N_{\text{total}}}{n_{\text{classes}} \times N_c}$$
 
-| Quantity | Meaning |
-|---|---|
-| $N_{\text{total}}$ | Total number of training windows |
-| $n_{\text{classes}}$ | 5 |
-| $N_c$ | Number of training windows belonging to class $c$ |
-
-**Effect:** Rare classes get high weight → the loss penalty for misclassifying an X-class event is amplified. The model cannot ignore X-class and get away with it.
-
-**Example weights (approximate, based on train split distribution):**
-
-| Class | Windows | Weight (approx.) |
-|-------|---------|-----------------|
-| Quiet | ~900    | 0.41            |
-| B     | ~450    | 0.82            |
-| C     | ~380    | 0.97            |
-| M     | ~80     | 4.6             |
-| X     | ~16     | 23.0            |
-
-X-class misclassification is penalised ~56× more than Quiet misclassification.
-
-**Usage:**
-```python
-from src.HPINA.models.baseline_tcn import build_weighted_criterion
-
-# Pass all training labels (1D integer tensor)
-criterion = build_weighted_criterion(
-    train_labels=train_ds.tensors[1],   # shape (N,)
-    n_classes=5,
-    device=device,
-    label_smoothing=0.0,                # set to 0.1 for smoother training
-)
-```
-
-Weights are computed automatically from the actual label distribution — no hardcoding.
+> **Important:** Weights are never hardcoded. They adapt automatically to the label distribution of the dataset loaded.
 
 ---
 
 ### 4.7 `metrics.py`
 
-**Why not just accuracy?** On imbalanced data, accuracy is a trap. A model predicting "Quiet" always would achieve ~50% accuracy. Macro F1 is the primary metric because it treats every class equally regardless of how many samples it has.
+### Evaluation Priority Order
 
-**Metrics computed per evaluation pass:**
+On imbalanced solar flare data, metrics are evaluated in strict operational order:
 
-| Metric | Formula | Meaning |
-|--------|---------|---------|
-| **Accuracy** | `correct / total` | Overall fraction correct |
-| **Macro Precision** | `mean(P_c)` | Mean precision across all 5 classes |
-| **Macro Recall** | `mean(R_c)` | Mean recall across all 5 classes |
-| **Macro F1** | `mean(F1_c)` | **Primary metric** — harmonic mean of P and R per class, then averaged |
-| **Per-class Precision** | `TP_c / (TP_c + FP_c)` | Of all windows predicted as class `c`, how many were actually `c`? |
-| **Per-class Recall** | `TP_c / (TP_c + FN_c)` | Of all actual class `c` windows, how many did we correctly catch? |
-| **Per-class F1** | `2PR / (P + R)` | Harmonic mean of precision and recall for class `c` |
+1. **Macro F1 (Primary Metric):** Unweighted average of per-class F1 scores. Main target for model selection and checkpointing (`best_macro_f1.pt`).
+2. **Per-class Recall:** Specifically **X-class Recall** and **M-class Recall**. Operational safety depends on catching rare high-energy flares.
+3. **Confusion Matrix:** Full $5 \times 5$ inter-class confusion table to analyze misclassification patterns.
+4. **Accuracy:** Overall fraction correct. Treated as a secondary baseline metric due to class imbalance bias.
 
-**Confusion matrix** is printed at the end of training:
+---
 
-```
-True\Pred   Quiet      B      C      M      X
----------------------------------------------
-Quiet         800     12      5      2      0     ← mostly correct
-B              30    390     20      3      0
-C              15     25    310     12      1
-M               5      8     20     45      2
-X               2      1      3      4      6     ← hardest class
-```
+## 5. Training Pipeline & Telemetry
 
-The confusion matrix reveals *where* the model fails — e.g. whether it confuses M and X, or dumps everything into "Quiet".
+`scripts/train.py` records complete telemetry per run:
+- **Per-epoch time:** Seconds elapsed per epoch (`elapsed_s`).
+- **Live Memory Footprint:** Process RSS RAM in MB (`ram_mb`) recorded per epoch.
+- **Total Duration:** Total wall-clock execution time formatted as `Xh Ym Zs`.
+- **Run Artifacts:** Full metric history saved to `history.json` and `train.log`.
 
-**Key functions:**
+---
+
+## 6. Reproducibility & Determinism
+
+To guarantee reproducible research across different runs and environments, `scripts/train.py` enforces deterministic seeds across all random number generators:
 
 ```python
-# Full eval pass — returns (mean_loss, metrics_dict)
-val_loss, metrics = evaluate(model, val_loader, criterion, device)
+import random
+import numpy as np
+import torch
 
-# Just compute metrics from lists of ints
-metrics = compute_metrics(all_preds, all_labels)
-
-# Pretty-print
-print(format_metrics_table(metrics))
-print(confusion_matrix_str(all_preds, all_labels))
+def set_seed(seed: int = 42) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 ```
 
 ---
 
-### 4.8 `__init__.py`
+## 7. Automatic Mixed Precision (AMP)
 
-Exports everything public so any import from the package works cleanly:
+For GPU acceleration on CUDA-enabled instances, `scripts/train.py` supports Automatic Mixed Precision via the `--amp` flag:
 
 ```python
-from src.HPINA.models.baseline_tcn import HelioForgeTCN           # full model
-from src.HPINA.models.baseline_tcn import build_weighted_criterion  # loss
-from src.HPINA.models.baseline_tcn import evaluate                  # eval loop
-from src.HPINA.models.baseline_tcn import compute_metrics           # metrics
-from src.HPINA.models.baseline_tcn import CLASS_NAMES               # ["Quiet","B","C","M","X"]
+use_amp    = args.amp and use_cuda
+amp_scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
+with torch.amp.autocast("cuda", enabled=use_amp):
+    logits = model(X_batch)
+    loss   = criterion(logits, y_batch) / args.accum_steps
+
+amp_scaler.scale(loss).backward()
 ```
 
 ---
 
-## 5. Training Loop
+## 8. The Maths
 
-`scripts/train.py` implements the complete training pipeline.
+### Receptive Field Formula
 
-### Data flow
+$$\text{RF} = 1 + (k - 1) \cdot \sum_{i=0}^{K-1} d_i = 1 + 2 \times 255 = \mathbf{511 \text{ timesteps}}$$
 
-```
-.pt file on disk
-      ↓  torch.load()
-TensorDataset(X, y)
-      ↓  DataLoader(shuffle=True, batch_size=32)
-(X_batch, y_batch)   shape: (32, 32, 512) and (32,)
-      ↓  model(X_batch)
-logits               shape: (32, 5)
-      ↓  criterion(logits, y_batch)
-scalar loss
-      ↓  loss.backward()
-gradients on all ~8.4M parameters
-      ↓  optimizer.step()
-updated weights
-```
-
-### One epoch (train phase)
-
-```python
-model.train()
-for X_batch, y_batch in train_loader:
-    optimizer.zero_grad()                              # clear old gradients
-    logits = model(X_batch.to(device))                 # forward pass
-    loss   = criterion(logits, y_batch.to(device))     # weighted cross-entropy
-    loss.backward()                                    # backpropagation
-    nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # prevent explosion
-    optimizer.step()                                   # weight update
-```
-
-### One epoch (validation phase)
-
-```python
-model.eval()
-with torch.no_grad():    # no gradients needed — saves memory and time
-    val_loss, metrics = evaluate(model, val_loader, criterion, device)
-```
-
-### Optimizer: AdamW
-
-AdamW (Adam with decoupled Weight Decay) is the standard choice for deep learning:
-- **Adam** component: per-parameter adaptive learning rates based on gradient history
-- **Weight decay** component: L2 regularisation applied directly to weights (not to gradients like in standard Adam), preventing overfitting
-
-```
-lr=1e-3, weight_decay=1e-4
-```
-
-### Scheduler: ReduceLROnPlateau
-
-Monitors `val_loss`. If it doesn't improve for `patience // 2 = 7` epochs, the learning rate is halved:
-
-```
-lr  ×= 0.5  (factor)
-```
-
-This allows aggressive initial learning followed by fine-tuning as the model approaches convergence.
-
-### Gradient clipping
-
-```python
-nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-```
-
-Caps the global gradient norm at 1.0. Prevents the loss from exploding to `nan` — especially important with deep dilated convolutions where gradients can accumulate multiplicatively across 8 blocks.
-
-### Early stopping
-
-If `val_loss` doesn't improve for `patience=15` consecutive epochs, training stops automatically. This prevents wasting compute and prevents overfitting.
-
-```
-patience_count += 1  (each epoch without improvement)
-if patience_count >= 15: break
-```
-
-### Console output per epoch
-
-```
-Epoch  12/80  train_loss: 0.8821  val_loss: 0.9104  macro_f1: 0.4312  acc: 0.6820  lr: 1.00e-03  [8.3s]
-  ✓ Checkpoint saved  (best val_loss = 0.9104)
-```
-
----
-
-## 6. The Maths
-
-### 6.1 Cross-Entropy Loss
-
-For a single example with ground-truth class $c$:
-
-$$\mathcal{L}_{CE} = -\log\left(\frac{e^{z_c}}{\sum_{j=0}^{4} e^{z_j}}\right)$$
-
-where $z_j$ are the raw logits. The denominator is the softmax normalization. This loss is maximally penalised when the model assigns very low probability to the correct class.
-
-With class weights:
-
-$$\mathcal{L}_{\text{weighted}} = -w_c \cdot \log\left(\text{softmax}(z)_c\right)$$
-
-### 6.2 Receptive Field
-
-The number of input timesteps that influence a single output timestep:
-
-$$\text{RF} = 1 + (k - 1) \cdot \sum_{i=0}^{K-1} d_i$$
-
-For HelioForge: $k=3$, $K=8$ blocks, $d_i = 2^i$:
-
-$$\text{RF} = 1 + 2 \times (1 + 2 + 4 + 8 + 16 + 32 + 64 + 128) = 1 + 2 \times 255 = \mathbf{511}$$
-
-### 6.3 Macro F1
+### Macro F1 Formula
 
 $$\text{Macro F1} = \frac{1}{|C|} \sum_{c \in C} \frac{2 \cdot P_c \cdot R_c}{P_c + R_c}$$
 
-where $P_c = \frac{TP_c}{TP_c + FP_c}$ and $R_c = \frac{TP_c}{TP_c + FN_c}$.
-
-Averaging *before* weighting by class frequency means a model that misses all X-class events is heavily penalised, even if X has only 16 training samples.
-
-### 6.4 Causal Padding
-
-For a kernel of size $k$ with dilation $d$:
-- Left pad: $P = (k-1) \cdot d$ zeros
-- Conv output length: $L + P - d \cdot (k-1) = L$ ✓ (sequence length preserved)
-
 ---
 
-## 7. Hyperparameter Reference
+## 9. Hyperparameter & Ablation Reference
 
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `lr` | `1e-3` | Initial learning rate. Too high → NaN loss. Too low → slow convergence. |
-| `weight_decay` | `1e-4` | L2 regularisation strength via AdamW. Prevents overfitting. |
-| `batch_size` | `32` | Windows per gradient step. Larger = more stable gradients, more memory. |
-| `n_epochs` | `80` | Max training epochs before forced stop. |
-| `dropout` | `0.2` | Encoder dropout. Higher → more regularisation, slower convergence. |
-| `norm_type` | `"batch"` | Normalisation: `"batch"`, `"layer"`, or `"none"`. |
-| `patience` | `15` | Early stopping patience. Increase if loss is noisy. |
-| `grad_clip` | `1.0` | Max gradient norm. Set lower if loss explodes. |
-| `label_smooth` | `0.0` | Label smoothing epsilon (e.g. `0.1` softens targets slightly). |
+| Parameter | CLI Flag | Default | Description |
+|-----------|----------|---------|-------------|
+| `lr` | `--lr` | `1e-3` | Initial AdamW learning rate |
+| `weight_decay` | `--weight-decay` | `1e-4` | AdamW weight decay |
+| `batch_size` | `--batch-size` | `16` | Micro-batch size per step (optimized for 8 GB RAM) |
+| `accum_steps` | `--accum-steps` | `2` | Gradient accumulation steps (effective batch = 32) |
+| `norm_type` | `--norm-type` | `"batch"` | `"batch"`, `"layer"`, or `"none"` |
+| `head_dims` | `--head-dims` | `256 128` | Classifier MLP hidden dimensions |
+| `amp` | `--amp` | `False` | Enable Automatic Mixed Precision on GPU |
+| `seed` | `--seed` | `42` | Random seed for reproducibility |
 
-### Ablation suggestions
-
-To systematically test what matters most, vary one parameter at a time:
+### Example Ablation Commands
 
 ```bash
-# Ablation 1: Layer norm vs batch norm
-python scripts/train.py --norm-type layer  --run-name ablate_layernorm
+# Ablation 1: Classifier head depth (512 -> 128 -> 5)
+python scripts/train.py --head-dims 128 --run-name ablate_head_shallow
 
-# Ablation 2: Higher dropout
-python scripts/train.py --dropout 0.4  --run-name ablate_dropout04
+# Ablation 2: Layer Normalization
+python scripts/train.py --norm-type layer --run-name ablate_layernorm
 
-# Ablation 3: Label smoothing
-python scripts/train.py --label-smooth 0.1  --run-name ablate_labelsmooth
-
-# Ablation 4: Smaller LR
-python scripts/train.py --lr 3e-4  --run-name ablate_lr3e4
+# Ablation 3: AMP enabled on GPU
+python scripts/train.py --amp --run-name run_amp_gpu
 ```
 
 ---
 
-## 8. Checkpointing Strategy
+## 10. Checkpointing Strategy
 
-Three checkpoints are saved per run into `experiments/baseline_tcn/runs/<run_name>/checkpoints/`:
-
-| File | Saved when | Use for |
-|---|---|---|
-| `best_val_loss.pt` | Val loss reaches a new minimum | Final deployment model (most stable) |
-| `best_macro_f1.pt` | Macro F1 reaches a new maximum | Best overall class-balanced performance |
-| `final.pt` | End of training (regardless of performance) | Reproducing last epoch state |
-
-Each checkpoint contains:
-```python
-{
-  "epoch"         : int,
-  "model_state"   : model.state_dict(),
-  "optimizer_state": optimizer.state_dict(),
-  "val_loss"      : float,
-  "val_metrics"   : dict,
-  "args"          : dict,   # all CLI args used to produce this run
-}
-```
-
-**To resume or run inference from a checkpoint:**
-```python
-ckpt  = torch.load("experiments/baseline_tcn/runs/baseline_v1/checkpoints/best_macro_f1.pt")
-model = HelioForgeTCN(**{k: ckpt["args"][k] for k in ["in_channels", "n_classes", "dropout", "norm_type"]})
-model.load_state_dict(ckpt["model_state"])
-model.eval()
-```
+Checkpoints are saved to `experiments/baseline_tcn/runs/<run_name>/checkpoints/`:
+- `best_macro_f1.pt`: Highest Macro F1 (Primary deployment target).
+- `best_val_loss.pt`: Lowest validation loss.
+- `final.pt`: Last epoch state.
 
 ---
 
-## 9. Interpreting Results
+## 11. Interpreting Results
 
-### What good training looks like
+### Target Performance Benchmarks
 
-```
-Epoch  1/80   train_loss: 1.612  val_loss: 1.598   macro_f1: 0.200   ← random, ≈log(5)
-Epoch  5/80   train_loss: 1.201  val_loss: 1.189   macro_f1: 0.310   ← learning
-Epoch 10/80   train_loss: 0.887  val_loss: 0.901   macro_f1: 0.421
-Epoch 20/80   train_loss: 0.623  val_loss: 0.641   macro_f1: 0.511
-Epoch 30/80   train_loss: 0.521  val_loss: 0.539   macro_f1: 0.552
-Epoch 40/80   train_loss: 0.498  val_loss: 0.541   macro_f1: 0.558   ← LR decay kicks in
-Epoch 50/80   train_loss: 0.489  val_loss: 0.536   macro_f1: 0.562   ← convergence
-```
-
-### Red flags
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Loss → `nan` immediately | Gradient explosion | Lower `lr`, lower `grad_clip` |
-| Both losses stuck high after 15 epochs | Too small LR or data bug | Increase `lr`, verify data loading |
-| `val_loss` rising while `train_loss` falls | Overfitting | Increase `dropout`, reduce model capacity |
-| Macro F1 stuck at `0.2` (random) | Class weights not applied | Check `build_weighted_criterion` is used |
-| X-class recall = 0.0 throughout | Model ignores rare class | Increase weight for X-class manually |
-
-### Target performance (baseline)
-
-| Metric | Minimum acceptable | Good |
-|--------|-------------------|------|
-| Accuracy | > 60% | > 75% |
-| Macro F1 | > 0.40 | > 0.55 |
-| X-class Recall | > 0.30 | > 0.50 |
-| M-class Recall | > 0.40 | > 0.60 |
-
-> **Note:** X-class recall is the most important single number operationally. Missing an X-class flare has severe real-world consequences. Prioritize `best_macro_f1.pt` over `best_val_loss.pt` for deployment.
+| Metric | Minimum Acceptable | Good Baseline |
+|--------|-------------------|---------------|
+| **Macro F1** | > 0.40 | > 0.55 |
+| **X-class Recall** | > 0.30 | > 0.50 |
+| **M-class Recall** | > 0.40 | > 0.60 |
+| **Accuracy** | > 60% | > 75% |
 
 ---
 
-## 10. Quick Command Reference
+## 12. Quick Command Reference
 
-### Run all module tests locally
 ```bash
-python scripts/test_baseline_tcn.py
-```
+# EC2 Baseline Training (Zero required args)
+python scripts/train.py
 
-### Train on EC2 (standard run)
-```bash
-git pull origin main
-python scripts/train.py \
-    --data-dir /opt/helioforge-ai/data/windows \
-    --output-dir experiments/baseline_tcn/runs \
-    --run-name baseline_v1 \
-    --n-epochs 80 \
-    --batch-size 32
-```
-
-### Train with layer normalization (ablation)
-```bash
-python scripts/train.py \
-    --data-dir /opt/helioforge-ai/data/windows \
-    --run-name ablate_layernorm \
-    --norm-type layer \
-    --n-epochs 80
-```
-
-### Inspect a saved checkpoint
-```python
-import torch
-ckpt = torch.load("experiments/baseline_tcn/runs/baseline_v1/checkpoints/best_macro_f1.pt")
-print(f"Epoch      : {ckpt['epoch']}")
-print(f"Val loss   : {ckpt['val_loss']:.4f}")
-print(f"Macro F1   : {ckpt['val_metrics']['macro_f1']:.4f}")
-print(f"X recall   : {ckpt['val_metrics']['recall_X']:.4f}")
-```
-
-### Outputs per run
-```
-experiments/baseline_tcn/runs/<run_name>/
-├── config.json              ← all CLI args used
-├── train.log                ← full epoch-by-epoch log
-├── history.json             ← all metrics per epoch (for plotting)
-└── checkpoints/
-    ├── best_val_loss.pt     ← lowest val loss
-    ├── best_macro_f1.pt     ← highest macro F1
-    └── final.pt             ← end of training
+# Custom Run with AMP and Specific Head Architecture
+python scripts/train.py --run-name custom_v1 --head-dims 256 128 --amp
 ```
 
 ---
 
-*HelioForge AI — Baseline TCN Complete Reference v1.0*
+*HelioForge AI — Baseline TCN Technical Reference v1.1*
 *Last updated: 2026-07-28*

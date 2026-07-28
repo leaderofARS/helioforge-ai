@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import List, Optional
 
 class ClassifierHead(nn.Module):
     """
@@ -7,9 +8,11 @@ class ClassifierHead(nn.Module):
     then linear layers map the compact representation to class logits.
 
     Args:
-        in_features (int):   Channel count from TCNEncoder (512 for HelioForge).
-        n_classes   (int):   Number of output classes (5 for flare classification).
-        dropout     (float): Dropout probability in the MLP (default 0.3).
+        in_features (int):         Channel count from TCNEncoder (512 for HelioForge).
+        n_classes   (int):         Number of output classes (5 for flare classification).
+        dropout     (float):       Dropout probability in the MLP (default 0.3).
+        head_dims   (list[int]):   Hidden layer dimensions for the MLP head.
+                                   Default: [256, 128]. Allows easy ablation of classifier capacity.
     """
 
     def __init__(
@@ -17,15 +20,32 @@ class ClassifierHead(nn.Module):
         in_features: int = 512,
         n_classes: int = 5,
         dropout: float = 0.3,
+        head_dims: Optional[List[int]] = None,
     ) -> None:
         super().__init__()
-        self.gap  = nn.AdaptiveAvgPool1d(1)  # (B, 512, L) → (B, 512, 1)
-        self.head = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(in_features, 256), nn.ReLU(), nn.Dropout(dropout),
-            nn.Linear(256, 128),         nn.ReLU(), nn.Dropout(dropout),
-            nn.Linear(128, n_classes),
-        )
+        if head_dims is None:
+            head_dims = [256, 128]
+
+        self.in_features = in_features
+        self.n_classes   = n_classes
+        self.dropout     = dropout
+        self.head_dims   = head_dims
+
+        self.gap = nn.AdaptiveAvgPool1d(1)  # (B, in_features, L) → (B, in_features, 1)
+
+        layers: List[nn.Module] = [nn.Flatten()]
+        curr_dim = in_features
+
+        for h_dim in head_dims:
+            layers.extend([
+                nn.Linear(curr_dim, h_dim),
+                nn.ReLU(inplace=True),
+                nn.Dropout(dropout),
+            ])
+            curr_dim = h_dim
+
+        layers.append(nn.Linear(curr_dim, n_classes))
+        self.head = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -41,5 +61,4 @@ class ClassifierHead(nn.Module):
         torch.Tensor
             Logits of shape (batch_size, n_classes).
         """
-        # x: (Batch, in_features, L) -> gap(x): (Batch, in_features, 1) -> head: (Batch, n_classes)
         return self.head(self.gap(x))

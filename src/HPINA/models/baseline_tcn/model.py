@@ -6,7 +6,7 @@ from .classifier  import ClassifierHead
 
 class HelioForgeTCN(nn.Module):
     """
-    Full High-Capacity Production TCN = TCNEncoder (2.1M+ params) + ClassifierHead.
+    Full High-Capacity Production TCN = TCNEncoder (8.57M params) + ClassifierHead.
 
     Input:  (Batch, F=32, L=512)
     Output: (Batch, n_classes)     raw logits — apply softmax for probabilities
@@ -18,6 +18,8 @@ class HelioForgeTCN(nn.Module):
         kernel_size      (int):       Convolution kernel size (default 3).
         dropout          (float):     Dropout probability (default 0.2).
         norm_type        (str):       Normalization type: "batch", "layer", or "none" (default "batch").
+        head_dims        (list[int]): Classifier MLP hidden dimensions (default [256, 128]).
+        head_dropout     (float):     Classifier MLP dropout probability (default 0.3).
     """
 
     def __init__(
@@ -27,22 +29,25 @@ class HelioForgeTCN(nn.Module):
         channel_schedule: Optional[List[int]] = None,
         kernel_size: int = 3,
         dropout: float = 0.2,
-        norm_type: str = "batch"
+        norm_type: str = "batch",
+        head_dims: Optional[List[int]] = None,
+        head_dropout: float = 0.3,
     ) -> None:
         super().__init__()
         # Instantiate encoder with configured normalization and schedule
-        self.encoder    = TCNEncoder(
+        self.encoder = TCNEncoder(
             in_channels=in_channels,
             channel_schedule=channel_schedule,
             kernel_size=kernel_size,
             dropout=dropout,
-            norm_type=norm_type
+            norm_type=norm_type,
         )
         # Instantiate classifier head using out_channels from the encoder
         self.classifier = ClassifierHead(
             in_features=self.encoder.out_channels,
             n_classes=n_classes,
-            dropout=0.3
+            dropout=head_dropout,
+            head_dims=head_dims,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -59,6 +64,4 @@ class HelioForgeTCN(nn.Module):
         torch.Tensor
             Class logits of shape (batch_size, n_classes).
         """
-        # x:   (Batch, in_channels, L)
-        # out: (Batch, n_classes)
         return self.classifier(self.encoder(x))

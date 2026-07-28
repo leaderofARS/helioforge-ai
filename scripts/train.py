@@ -434,6 +434,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-threads",  type=int, default=2,
                         help="PyTorch intra-op threads. Match physical core count.")
 
+    parser.add_argument("--head-dims",    type=int, nargs="+", default=[256, 128],
+                        help="Classifier MLP hidden layer dimensions (default: 256 128).")
+    parser.add_argument("--amp",          action="store_true",
+                        help="Enable Automatic Mixed Precision (AMP) for GPU acceleration.")
+
     parser.add_argument("--seed",         type=int,  default=42)
     parser.add_argument("--no-cuda",      action="store_true")
     parser.add_argument("--no-progress",  action="store_true",
@@ -466,9 +471,13 @@ def save_checkpoint(state: dict, path: Path, log: logging.Logger) -> None:
 def main() -> None:
     args = parse_args()
 
-    torch.set_num_threads(args.num_threads)
+    import random
+    random.seed(args.seed)
+    np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
     use_cuda       = torch.cuda.is_available() and not args.no_cuda
     device         = torch.device("cuda" if use_cuda else "cpu")
@@ -622,15 +631,21 @@ def main() -> None:
         model = HelioForgeTCN(
             in_channels=args.in_channels, n_classes=args.n_classes,
             dropout=args.dropout, norm_type=args.norm_type,
+            head_dims=args.head_dims,
         ).to(device)
     except Exception as exc:
         _fatal(log, "MODEL CONSTRUCTION FAILURE",
                f"HelioForgeTCN failed to initialise.\n"
                f"  in_channels={args.in_channels}  n_classes={args.n_classes}\n"
-               f"  norm_type={args.norm_type}  dropout={args.dropout}\n"
+               f"  norm_type={args.norm_type}  dropout={args.dropout}  head_dims={args.head_dims}\n"
                f"  Reason : {exc}",
                hint="norm_type must be one of 'batch', 'layer', 'none'.")
         raise ModelError("HelioForgeTCN construction failed.") from exc
+
+    use_amp    = args.amp and use_cuda
+    amp_scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    if use_amp:
+        log.info("AMP enabled    : Automatic Mixed Precision (float16/bfloat16)")
 
     n_params  = sum(p.numel() for p in model.parameters() if p.requires_grad)
     model_mb  = n_params * 4 / 1024 / 1024
@@ -715,9 +730,11 @@ def main() -> None:
                 X_batch = X_batch.to(device)
                 y_batch = y_batch.to(device)
 
-                logits = model(X_batch)
-                loss   = criterion(logits, y_batch) / args.accum_steps
-                loss.backward()
+                with torch.amp.autocast("cuda", enabled=use_amp):
+                    logits = model(X_batch)
+                    loss   = criterion(logits, y_batch) / args.accum_steps
+
+                amp_scaler.scale(loss).backward()
 
                 accum_loss   += loss.item()
                 running_loss  = accum_loss * args.accum_steps   # unscaled display
@@ -738,8 +755,10 @@ def main() -> None:
                             f"    - Gradient explosion → restart with --grad-clip 0.5\n"
                             f"    - Input NaN/Inf → re-verify with verify_pre_training.py"
                         )
+                    amp_scaler.unscale_(optimizer)
                     nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
-                    optimizer.step()
+                    amp_scaler.step(optimizer)
+                    amp_scaler.update()
                     optimizer.zero_grad()
                     train_loss += accum_loss
                     accum_loss  = 0.0
