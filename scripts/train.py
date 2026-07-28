@@ -647,7 +647,7 @@ def main() -> None:
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", patience=args.patience // 2, factor=0.5, verbose=False,
+        optimizer, mode="min", patience=args.patience // 2, factor=0.5,
     )
 
     # ── Training state ─────────────────────────────────────────────────────────
