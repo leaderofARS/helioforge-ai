@@ -3,15 +3,16 @@ import GlowCard from "./GlowCard";
 export default function ModelStatus() {
   return (
     <GlowCard>
-
-      <h2 className="text-xl font-bold mb-5">
-        HPINA Status
+      <h2 className="mb-5 text-xl font-bold">
+        HelioForgeTCN Status
       </h2>
 
-      <div className="space-y-3">
-
+      <div className="space-y-3 text-slate-300">
         <p>
-          🟢 Model Loaded
+          🟢 Model :{" "}
+          <span className="font-semibold text-white">
+            Loaded
+          </span>
         </p>
 
         <p>
@@ -23,11 +24,20 @@ export default function ModelStatus() {
         </p>
 
         <p>
-          ⚙ Device : CPU
+          Epoch : <span className="text-white">25</span>
         </p>
 
-      </div>
+        <p>
+          Device : <span className="text-white">CPU</span>
+        </p>
 
+        <p>
+          Validation F1 :{" "}
+          <span className="text-white">
+            0.8714
+          </span>
+        </p>
+      </div>
     </GlowCard>
   );
 }

@@ -1,25 +1,27 @@
+import GlowCard from "./GlowCard";
+
 const steps = [
-  "Raw FITS",
+  "Data Ingestion",
   "Preprocessing",
   "Feature Engineering",
-  "HPINA Model",
+  "TCN Model",
   "Prediction",
 ];
 
 export default function ProcessingTimeline() {
   return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6">
-      <h2 className="text-xl font-bold mb-6">
+    <GlowCard>
+      <h2 className="mb-6 text-xl font-bold">
         Data Processing Pipeline
       </h2>
 
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
         {steps.map((step, index) => (
           <div
             key={step}
-            className="flex flex-col items-center flex-1"
+            className="flex flex-1 flex-col items-center"
           >
-            <div className="w-12 h-12 rounded-full bg-cyan-600 flex items-center justify-center font-bold">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-600 font-bold">
               {index + 1}
             </div>
 
@@ -28,11 +30,11 @@ export default function ProcessingTimeline() {
             </p>
 
             {index !== steps.length - 1 && (
-              <div className="w-full h-1 bg-cyan-500 mt-4"></div>
+              <div className="mt-4 hidden h-1 w-full bg-cyan-500 md:block" />
             )}
           </div>
         ))}
       </div>
-    </div>
+    </GlowCard>
   );
 }
