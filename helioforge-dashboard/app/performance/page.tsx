@@ -1,8 +1,7 @@
 import ConfusionMatrixClient from "@/components/charts/ConfusionMatrixClient";
 import FeatureCard from "@/components/ui/FeatureCard";
 import ClassPerformanceClient from "@/components/charts/ClassPerformanceClient";
-<ConfusionMatrixClient />
-
+import { TrainingView } from "@/components/dashboard/AnalysisViews";
 
 export default function PerformancePage() {
   return (
@@ -41,6 +40,10 @@ export default function PerformancePage() {
 
       <ConfusionMatrixClient />
       <ClassPerformanceClient />
+      <section className="rounded-2xl border border-gray-800 bg-gray-950 p-6">
+        <h2 className="mb-4 text-xl font-bold">Training History</h2>
+        <TrainingView />
+      </section>
     </main>
   );
 }

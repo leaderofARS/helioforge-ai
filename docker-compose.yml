@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    volumes:
+      - /opt/helioforge-ai/data:/opt/helioforge-ai/data:ro
+      - /opt/helioforge-ai/models:/opt/helioforge-ai/models:ro
+      - /opt/helioforge-ai/experiments:/opt/helioforge-ai/experiments:ro
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: helioforge-dashboard/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: ""
+    expose:
+      - "3000"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "${HELIOFORGE_PORT:-80}:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped

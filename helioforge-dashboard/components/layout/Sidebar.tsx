@@ -1,37 +1,6 @@
-export default function Sidebar() {
-  return (
-    <aside className="w-64 min-h-screen bg-slate-950 border-r border-slate-700 p-6">
-
-      <h2 className="text-xl font-bold text-white mb-8">
-        Navigation
-      </h2>
-
-      <ul className="space-y-4 text-gray-300">
-
-        <li>🏠 Mission Control</li>
-
-        <li>☀️ Sun</li>
-
-        <li>📈 Prediction</li>
-
-        <li>📊 Signals</li>
-
-        <li>🧠 Features</li>
-
-        <li>📂 Upload</li>
-
-        <li>
-             <a href="/performance">
-             ⚡ Performance
-              </a>
-        </li>
-
-        <li>🎞 Animation</li>
-
-        <li>🔮 Forecast</li>
-
-      </ul>
-
-    </aside>
-  );
-}
+"use client";
+import Link from "next/link";
+import { usePredictionStore } from "@/store/usePredictionStore";
+const routes=[["/signals","Signal analysis"],["/intensity","RGB intensity"],["/features","32 features"],["/animation","Flare animation"],["/forecast","Forecast"]];
+const riskColors={LOW:"text-green-400",MEDIUM:"text-yellow-400",HIGH:"text-orange-400",EXTREME:"text-red-400"};
+export default function Sidebar(){const {prediction}=usePredictionStore();return <aside className="hidden w-60 shrink-0 border-l border-[#21262d] bg-[#0d1117]/80 p-5 xl:block"><p className="text-xs tracking-widest text-slate-500">LIVE ASSESSMENT</p><p className={`mt-3 text-xl font-bold ${riskColors[prediction.risk_level]} ${prediction.risk_level === "HIGH" || prediction.risk_level === "EXTREME" ? "animate-pulse" : ""}`}>{prediction.risk_level}</p><p className="mt-5 text-xs text-slate-500">CONFIDENCE</p><p className="mono text-2xl">{(prediction.confidence*100).toFixed(1)}%</p><div className="mt-2 h-2 overflow-hidden rounded bg-slate-800"><div className="h-full bg-gradient-to-r from-green-500 via-yellow-400 to-red-500 transition-all duration-500" style={{width:`${prediction.confidence*100}%`}}/></div><p className="mt-5 text-xs text-slate-500">FLARE CLASS</p><p className="text-lg font-bold">{prediction.predicted_label}-class</p><div className="mt-8 space-y-3 border-t border-[#21262d] pt-5">{routes.map(([href,label])=><Link className="nav-link block text-sm" href={href} key={href}>{label}</Link>)}<Link href="/upload" className="mt-3 block rounded bg-orange-500 px-3 py-2 text-center text-sm font-bold text-black">Upload observation</Link></div></aside>}

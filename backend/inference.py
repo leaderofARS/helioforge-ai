@@ -1,199 +1,103 @@
+from __future__ import annotations
+
+import time
 from pathlib import Path
+from typing import Any
 
 import torch
 
 from src.HPINA.models.baseline_tcn.model import HelioForgeTCN
+from src.HPINA.configs.paths import PathConfig
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PATHS = PathConfig.from_yaml(PROJECT_ROOT / "configs/data_paths.yaml")
+CLASS_NAMES = ["Quiet", "B", "C", "M", "X"]
+RISK_LEVELS = {0: "LOW", 1: "LOW", 2: "MEDIUM", 3: "HIGH", 4: "EXTREME"}
 
 
-ROOT = Path("/opt/helioforge-ai")
-
-CHECKPOINT_PATH = (
-    ROOT
-    / "experiments"
-    / "baseline_tcn"
-    / "runs"
-    / "tcn_batch_lr0.001_20260728_123229"
-    / "checkpoints"
-    / "best_macro_f1.pt"
-)
-
-TEST_DATA_PATH = (
-    ROOT
-    / "data"
-    / "windows"
-    / "test_feat32_w512.pt"
-)
+def _first_existing(*paths: Path) -> Path | None:
+    return next((path for path in paths if path.is_file()), None)
 
 
-CLASS_NAMES = [
-    "Quiet",
-    "B",
-    "C",
-    "M",
-    "X",
-]
-
-
-RISK_LEVELS = {
-    0: "LOW",
-    1: "LOW",
-    2: "MEDIUM",
-    3: "HIGH",
-    4: "EXTREME",
-}
+def _find_checkpoint() -> Path | None:
+    """Resolve model artefacts strictly from configs/data_paths.yaml."""
+    direct = _first_existing(
+        PATHS.experiments.baseline_tcn.checkpoints / "best_macro_f1.pt",
+        PATHS.models.baseline_tcn / "best_macro_f1.pt",
+    )
+    if direct:
+        return direct
+    for root in (PATHS.experiments.baseline_tcn.runs, PATHS.models.baseline_tcn):
+        if root.is_dir():
+            found = next(root.rglob("best_macro_f1.pt"), None)
+            if found:
+                return found
+    return None
 
 
 class HelioForgeInference:
+    """Loads the trained model once, using local paths before deployment paths."""
 
-    def __init__(self):
-        print("Loading HelioForgeTCN checkpoint...")
-
+    def __init__(self) -> None:
         self.device = torch.device("cpu")
-
-        self.checkpoint = torch.load(
-            CHECKPOINT_PATH,
-            map_location=self.device,
-            weights_only=False,
-        )
-
-        args = self.checkpoint["args"]
-
-        self.model = HelioForgeTCN(
-            in_channels=args["in_channels"],
-            n_classes=args["n_classes"],
-            dropout=args["dropout"],
-            norm_type=args["norm_type"],
-            head_dims=args["head_dims"],
-        )
-
-        self.model.load_state_dict(
-            self.checkpoint["model_state"]
-        )
-
-        self.model.to(self.device)
-        self.model.eval()
-
-        print("✓ HelioForgeTCN loaded")
-
-        # Load demo dataset
-        obj = torch.load(
-            TEST_DATA_PATH,
-            map_location=self.device,
-            weights_only=False,
-        )
-
-        if not isinstance(obj, dict):
-            raise ValueError(
-                "Expected test dataset to be a dictionary."
+        self.checkpoint: dict[str, Any] = {}
+        self.sequences: torch.Tensor | None = None
+        self.error: str | None = None
+        checkpoint = _find_checkpoint()
+        if checkpoint is None:
+            self.error = f"Model checkpoint is not installed under {PATHS.experiments.baseline_tcn.root} or {PATHS.models.baseline_tcn}."
+            return
+        try:
+            self.checkpoint = torch.load(checkpoint, map_location=self.device, weights_only=False)
+            args = self.checkpoint["args"]
+            self.model = HelioForgeTCN(
+                in_channels=args["in_channels"], n_classes=args["n_classes"],
+                dropout=args.get("dropout", 0.2), norm_type=args.get("norm_type", "batch"),
+                head_dims=args.get("head_dims", [256, 128]),
             )
+            self.model.load_state_dict(self.checkpoint["model_state"])
+            self.model.eval()
+            data_path = _first_existing(PATHS.windows.test)
+            if data_path:
+                loaded = torch.load(data_path, map_location=self.device, weights_only=False)
+                self.sequences = loaded.get("sequences") if isinstance(loaded, dict) else loaded
+        except Exception as exc:  # Keep health and documentation endpoints available.
+            self.error = f"Model initialization failed: {exc}"
 
-        self.sequences = obj["sequences"]
+    @property
+    def ready(self) -> bool:
+        return self.error is None and hasattr(self, "model")
 
-        if self.sequences.ndim != 3:
-            raise ValueError(
-                f"Expected 3D tensor, got {self.sequences.shape}"
-            )
-
-        if self.sequences.shape[1] != 32:
-            raise ValueError(
-                f"Expected 32 features, got {self.sequences.shape[1]}"
-            )
-
-        if self.sequences.shape[2] != 512:
-            raise ValueError(
-                f"Expected 512 timesteps, got {self.sequences.shape[2]}"
-            )
-
-        print(
-            f"✓ Demo dataset loaded: "
-            f"{tuple(self.sequences.shape)}"
-        )
-
-    def predict_tensor(self, tensor: torch.Tensor):
-
-        if tensor.ndim != 3:
-            raise ValueError(
-                f"Expected input shape (batch, 32, 512), "
-                f"got {tuple(tensor.shape)}"
-            )
-
-        if tensor.shape[1] != 32:
-            raise ValueError(
-                f"Expected 32 features, got {tensor.shape[1]}"
-            )
-
-        if tensor.shape[2] != 512:
-            raise ValueError(
-                f"Expected 512 timesteps, got {tensor.shape[2]}"
-            )
-
-        tensor = tensor.to(
-            device=self.device,
-            dtype=torch.float32,
-        )
-
+    def predict_tensor(self, tensor: torch.Tensor) -> dict[str, Any]:
+        if tuple(tensor.shape[1:]) != (32, 512):
+            raise ValueError("Expected an input tensor with shape (batch, 32, 512).")
+        if not self.ready:
+            raise RuntimeError(self.error or "Inference engine is unavailable.")
+        started = time.perf_counter()
         with torch.no_grad():
-
-            logits = self.model(tensor)
-
-            probabilities = torch.softmax(
-                logits,
-                dim=1,
-            )
-
-            predicted_class = torch.argmax(
-                probabilities,
-                dim=1,
-            )
-
-        class_id = predicted_class[0].item()
-
-        confidence = probabilities[
-            0,
-            class_id,
-        ].item()
-
-        probability_dict = {
-            CLASS_NAMES[i]: float(
-                probabilities[0, i].item()
-            )
-            for i in range(len(CLASS_NAMES))
-        }
-
+            probabilities = torch.softmax(self.model(tensor.to(self.device, dtype=torch.float32)), dim=1)[0]
+        class_id = int(probabilities.argmax().item())
         return {
-            "predicted_class": class_id,
-            "predicted_label": CLASS_NAMES[class_id],
-            "confidence": float(confidence),
-            "risk_level": RISK_LEVELS[class_id],
-            "probabilities": probability_dict,
+            "predicted_class": class_id, "predicted_label": CLASS_NAMES[class_id],
+            "confidence": float(probabilities[class_id].item()), "risk_level": RISK_LEVELS[class_id],
+            "probabilities": {name: float(probabilities[i].item()) for i, name in enumerate(CLASS_NAMES)},
+            "processing_time_ms": round((time.perf_counter() - started) * 1000, 2),
         }
 
-    def predict_demo(self, index: int = 0):
-
-        if index < 0 or index >= len(self.sequences):
-            raise IndexError(
-                f"Demo index must be between "
-                f"0 and {len(self.sequences) - 1}"
-            )
-
-        sample = self.sequences[
-            index:index + 1
-        ]
-
+    def predict_demo(self, index: int = 0) -> dict[str, Any]:
+        if self.sequences is None:
+            raise RuntimeError("Demo windows are not installed.")
+        if not 0 <= index < len(self.sequences):
+            raise IndexError(f"Demo index must be between 0 and {len(self.sequences) - 1}.")
+        sample = self.sequences[index:index + 1]
         result = self.predict_tensor(sample)
-
-        result["observation_id"] = (
-            f"DEMO_{index:04d}"
-        )
-
-        result["sample_index"] = index
-
-        result["input_shape"] = list(
-            sample.shape
-        )
-
+        signal = sample[0, 0].detach().cpu().tolist()
+        result.update({"observation_id": f"DEMO_{index:04d}", "sample_index": index,
+                       "input_shape": list(sample.shape), "signal": signal,
+                       "features": {f"feature_{i + 1:02d}": round(float(sample[0, i].mean()), 5) for i in range(32)},
+                       "rgb_intensity": {"red": 182, "green": 147, "blue": 103},
+                       "active_regions": []})
         return result
 
 
-# Load model once when backend starts.
 inference_engine = HelioForgeInference()

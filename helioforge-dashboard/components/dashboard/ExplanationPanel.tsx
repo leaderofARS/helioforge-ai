@@ -1,0 +1,6 @@
+"use client";
+import { useEffect, useState } from "react";
+import { usePredictionStore } from "@/store/usePredictionStore";
+import { API_BASE_URL } from "@/lib/api";
+type Explanation = { summary: string; risk_level: string; reasons: string[] };
+export default function ExplanationPanel(){const {prediction}=usePredictionStore();const [data,setData]=useState<Explanation|null>(null);useEffect(()=>{fetch(`${API_BASE_URL}/api/explanation?class_id=${prediction.predicted_class}&confidence=${prediction.confidence}`).then(r=>r.ok?r.json():null).then(setData).catch(()=>setData(null))},[prediction.confidence,prediction.predicted_class]);return <section className="panel p-5"><h2 className="text-lg font-bold">AI Explanation</h2><p className="mt-3 text-sm text-slate-300">{data?.summary ?? `The model classified this observation as ${prediction.predicted_label}-class with ${(prediction.confidence*100).toFixed(0)}% confidence.`}</p><ul className="mt-4 space-y-2 text-sm text-slate-400">{(data?.reasons ?? ["32 engineered temporal channels were evaluated across the 512-step observation window.","Confidence is the maximum softmax probability, not a physical flare magnitude."]).map(reason=><li key={reason}>• {reason}</li>)}</ul></section>}

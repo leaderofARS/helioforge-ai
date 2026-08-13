@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { API_BASE_URL } from "@/lib/api";
 
 type Prediction = {
   predicted_class: number;
@@ -18,9 +19,6 @@ type Prediction = {
   sample_index?: number;
   input_shape?: number[];
 };
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 const riskColors = {
   LOW: "bg-green-500/20 text-green-400 border-green-500/30",

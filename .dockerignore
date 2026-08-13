@@ -1,0 +1,17 @@
+.git
+.agents
+.codex
+**/node_modules
+**/.next
+data
+experiments
+reports
+assets
+visualizations
+*.pt
+*.parquet
+*.xlsx
+__pycache__
+*.pyc
+*.log
+.env

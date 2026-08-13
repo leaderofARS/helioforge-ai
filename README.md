@@ -4,6 +4,32 @@
 
 ---
 
+## Dashboard deployment (EC2)
+
+The dashboard, FastAPI service, and reverse proxy run as one Compose stack.
+Install Docker Engine with the Compose plugin, then from the repository root:
+
+```bash
+docker compose up --build -d
+```
+
+Open `http://<EC2-public-IP>/`. The API is proxied under `/api`; no separate
+port needs to be exposed. Check startup and model loading with:
+
+```bash
+docker compose ps
+curl http://localhost/api/health
+docker compose logs -f backend
+```
+
+All data paths are read from `configs/data_paths.yaml` and used unchanged.
+The Compose stack mounts `/opt/helioforge-ai/data`, `/opt/helioforge-ai/models`,
+and `/opt/helioforge-ai/experiments` at those same paths. The trained
+`best_macro_f1.pt` must be in the configured baseline checkpoint/model path;
+the configured `windows.test` file powers the live demo endpoint.
+
+---
+
 ## Overview
 
 HelioForge AI is a machine learning platform designed to preprocess, analyze, visualize, and predict solar flare activity using scientific observations from **ISRO's Aditya-L1 mission**.

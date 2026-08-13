@@ -13,7 +13,14 @@ export type Prediction = {
   observation_id?: string;
   sample_index?: number;
   input_shape?: number[];
+  processing_time_ms?: number;
+  signal?: number[];
+  features?: Record<string, number>;
+  rgb_intensity?: { red: number; green: number; blue: number };
+  active_regions?: ActiveRegion[];
 };
+
+export type ActiveRegion = { id: string; lat: number; lon: number; class: number; confidence?: number; intensity?: number };
 
 export type Health = {
   status: string;
@@ -25,8 +32,7 @@ export type Health = {
   classes: string[];
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export async function getHealth(): Promise<Health> {
   const response = await fetch(`${API_BASE_URL}/api/health`, {
@@ -56,5 +62,13 @@ export async function getDemoPrediction(
     );
   }
 
+  return response.json();
+}
+
+export async function predictFile(file: File): Promise<Prediction> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/api/predict`, { method: "POST", body: form });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || `Upload failed: ${response.status}`);
   return response.json();
 }

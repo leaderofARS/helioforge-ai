@@ -1,26 +1,13 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+:root { --bg-space:#010409; --bg-panel:#0d1117; --bg-card:#161b22; --bg-border:#21262d; --solar:#f97316; --text:#e6edf3; --muted:#8b949e; }
+* { box-sizing: border-box; }
+html { background:var(--bg-space); }
+body { min-height:100vh; margin:0; color:var(--text); background:radial-gradient(circle at 20% 20%,#1d1008 0,transparent 28%),var(--bg-space); font-family:Arial, Helvetica, sans-serif; }
+body::before { content:""; pointer-events:none; position:fixed; inset:0; opacity:.14; background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.05) 4px); z-index:50; }
+.panel { border:1px solid var(--bg-border); background:rgba(22,27,34,.78); backdrop-filter:blur(12px); border-radius:16px; }
+.mono { font-family:Consolas, "Courier New", monospace; }
+.sun { width:min(56vw,420px); aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 35% 30%,#ffd27a 0 3%,#ff7a18 22%,#e33c0a 56%,#6b1406 78%); box-shadow:0 0 28px #fb923c,0 0 90px #f9731680,0 0 180px #ef444440; animation:spin 24s linear infinite,pulse 3s ease-in-out infinite; }
+@keyframes spin { to { filter:hue-rotate(16deg); transform:rotate(360deg); } }
+@keyframes pulse { 50% { box-shadow:0 0 46px #fb923c,0 0 125px #f97316a0,0 0 200px #ef444460; } }
+.nav-link { color:var(--muted); transition:color .2s; }.nav-link:hover,.nav-link[aria-current="page"] { color:#fb923c; }

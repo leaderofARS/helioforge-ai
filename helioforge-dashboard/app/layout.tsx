@@ -16,19 +16,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-slate-950 text-white">
+      <body>
 
         <Navbar />
 
         <div className="flex">
-
+          <main className="min-w-0 flex-1 p-4 md:p-8">{children}</main>
           <Sidebar />
-
-          <main className="flex-1 p-8">
-
-            {children}
-
-          </main>
 
         </div>
 
