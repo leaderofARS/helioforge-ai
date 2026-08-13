@@ -3,20 +3,32 @@ import ClassBadge from "./ClassBadge";
 import ConfidenceMeter from "./ConfidenceMeter";
 import RiskIndicator from "./RiskIndicator";
 
-export default function PredictionCard() {
+type Props = {
+  label: "Quiet" | "B" | "C" | "M" | "X";
+  risk: "LOW" | "MEDIUM" | "HIGH" | "EXTREME";
+  confidence: number;
+};
+
+export default function PredictionCard({
+  label,
+  risk,
+  confidence,
+}: Props) {
   return (
     <GlowCard>
-      <h2 className="text-xl font-bold mb-4">Latest Prediction</h2>
+      <h2 className="mb-4 text-xl font-bold">
+        Latest Prediction
+      </h2>
 
       <div className="mb-4">
-        <ClassBadge label="M" />
+        <ClassBadge label={label} />
       </div>
 
       <div className="mb-4">
-        <RiskIndicator risk="HIGH" />
+        <RiskIndicator risk={risk} />
       </div>
 
-      <ConfidenceMeter value={87.14} />
+      <ConfidenceMeter value={confidence * 100} />
     </GlowCard>
   );
 }

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from pydantic import BaseModel
+import torch
 from backend.inference import (
     inference_engine,
     CLASS_NAMES,
@@ -31,7 +32,19 @@ def root():
         "status": "online",
         "service": "Solar Flare Intelligence API",
     }
+class PredictionRequest(BaseModel):
+    sequence: list[list[float]]
 
+
+@app.post("/api/predict")
+def predict(request: PredictionRequest):
+
+    tensor = torch.tensor(
+        [request.sequence],
+        dtype=torch.float32,
+    )
+
+    return inference_engine.predict_tensor(tensor)
 
 @app.get("/api/health")
 def health():

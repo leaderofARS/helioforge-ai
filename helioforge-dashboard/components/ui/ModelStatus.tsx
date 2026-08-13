@@ -1,10 +1,22 @@
 import GlowCard from "./GlowCard";
 
-export default function ModelStatus() {
+type Props = {
+  model: string;
+  checkpoint: string;
+  epoch: number;
+  macroF1: number;
+};
+
+export default function ModelStatus({
+  model,
+  checkpoint,
+  epoch,
+  macroF1,
+}: Props) {
   return (
     <GlowCard>
       <h2 className="mb-5 text-xl font-bold">
-        HelioForgeTCN Status
+        {model} Status
       </h2>
 
       <div className="space-y-3 text-slate-300">
@@ -20,21 +32,27 @@ export default function ModelStatus() {
         </p>
 
         <p className="text-green-400">
-          best_macro_f1.pt
+          {checkpoint}
         </p>
 
         <p>
-          Epoch : <span className="text-white">25</span>
+          Epoch :{" "}
+          <span className="text-white">
+            {epoch}
+          </span>
         </p>
 
         <p>
-          Device : <span className="text-white">CPU</span>
+          Device :{" "}
+          <span className="text-white">
+            CPU
+          </span>
         </p>
 
         <p>
           Validation F1 :{" "}
           <span className="text-white">
-            0.8714
+            {macroF1.toFixed(4)}
           </span>
         </p>
       </div>
