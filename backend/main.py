@@ -13,7 +13,7 @@ from backend.explanation import explain_prediction
 from backend.preprocessing import prepare_upload
 
 app = FastAPI(title="HELIO-FORGE AI API", description="Solar Flare Intelligence API", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
 
 PERFORMANCE = {"accuracy": .8941, "macro_f1": .8514, "macro_precision": .8488, "macro_recall": .8698,
  "per_class": {"Quiet": {"precision": .9485, "recall": 1, "f1": .9735, "support": 92}, "B": {"precision": .8716, "recall": .9627, "f1": .9149, "support": 134}, "C": {"precision": .9775, "recall": .7982, "f1": .8788, "support": 109}, "M": {"precision": .8696, "recall": .7547, "f1": .8081, "support": 53}, "X": {"precision": .5769, "recall": .8333, "f1": .6818, "support": 18}},

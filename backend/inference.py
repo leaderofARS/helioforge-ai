@@ -20,16 +20,23 @@ def _first_existing(*paths: Path) -> Path | None:
 
 
 def _find_checkpoint() -> Path | None:
-    """Resolve model artefacts strictly from configs/data_paths.yaml."""
-    direct = _first_existing(
+    """Search for best_macro_f1.pt — checks config paths then project-relative fallbacks."""
+    candidates = [
+        # From configs/data_paths.yaml (EC2 /opt layout)
         PATHS.experiments.baseline_tcn.checkpoints / "best_macro_f1.pt",
         PATHS.models.baseline_tcn / "best_macro_f1.pt",
-    )
+        # Project-relative fallbacks (works inside Docker or local dev)
+        PROJECT_ROOT / "experiments" / "baseline_tcn" / "checkpoints" / "best_macro_f1.pt",
+        PROJECT_ROOT / "models" / "baseline_tcn" / "best_macro_f1.pt",
+        PROJECT_ROOT / "best_macro_f1.pt",
+    ]
+    direct = _first_existing(*candidates)
     if direct:
         return direct
-    for root in (PATHS.experiments.baseline_tcn.runs, PATHS.models.baseline_tcn):
-        if root.is_dir():
-            found = next(root.rglob("best_macro_f1.pt"), None)
+    # Recursive search under project root experiments/ and models/
+    for search_root in (PROJECT_ROOT / "experiments", PROJECT_ROOT / "models", PATHS.experiments.baseline_tcn.runs, PATHS.models.baseline_tcn):
+        if search_root.is_dir():
+            found = next(search_root.rglob("best_macro_f1.pt"), None)
             if found:
                 return found
     return None
