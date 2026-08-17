@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { usePredictionStore } from "@/store/usePredictionStore";
 import { FiUploadCloud, FiFileText, FiCheckCircle, FiLoader, FiAlertCircle, FiZap } from "react-icons/fi";
 
@@ -9,20 +9,23 @@ export default function UploadView() {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadStep, setUploadStep] = useState<number>(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
     setSelectedFile(file);
     setUploadStep(1);
+    setUploadError(null);
 
-    // Simulate animated pipeline steps
-    setTimeout(() => setUploadStep(2), 300);
-    setTimeout(() => setUploadStep(3), 600);
+    setTimeout(() => setUploadStep(2), 400);
+    setTimeout(() => setUploadStep(3), 800);
 
     try {
       await predict(file);
       setUploadStep(4);
-    } catch {
+    } catch (err) {
       setUploadStep(0);
+      setUploadError(err instanceof Error ? err.message : "Upload failed. Check file format.");
     }
   };
 
@@ -72,21 +75,37 @@ export default function UploadView() {
                 Drag & Drop Solar Telemetry File
               </h3>
               <p className="text-xs text-gray-400 font-mono-code mt-1">
-                Supports FITS (`.fits`), PyTorch Tensors (`.pt`), or JSON telemetry metadata
+                Supports PyTorch Tensors (.pt), FITS (.fits/.fit), or JSON telemetry
               </p>
             </div>
 
-            <label className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-heading font-bold text-xs cursor-pointer shadow-lg shadow-amber-500/20 transition-all">
-              <FiFileText /> Browse Files
-              <input
-                type="file"
-                accept=".fits,.fit,.pt,.json,.csv"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleFile(e.target.files[0]);
-                }}
-              />
-            </label>
+            {/* Hidden real file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".fits,.fit,.pt,.json,.csv"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                if (e.target.files?.[0]) handleFile(e.target.files[0]);
+                e.target.value = "";
+              }}
+            />
+
+            {/* Visible button that triggers the input via ref */}
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-heading font-bold text-sm cursor-pointer shadow-lg shadow-amber-500/20 transition-all"
+            >
+              <FiFileText /> {isLoading ? "Processing..." : "Browse Files"}
+            </button>
+
+            {uploadError && (
+              <p className="text-xs text-red-400 font-mono-code flex items-center gap-1.5">
+                <FiAlertCircle /> {uploadError}
+              </p>
+            )}
           </div>
 
           {/* Animated Processing Pipeline Timeline */}
