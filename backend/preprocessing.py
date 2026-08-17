@@ -118,7 +118,57 @@ def prepare_upload(filename: str, content: bytes) -> PreparedObservation:
     try:
         from astropy.io import fits
         with fits.open(BytesIO(content), memmap=False) as hdul:
-            arrays = [np.asarray(hdu.data) for hdu in hdul if hdu.data is not None and np.asarray(hdu.data).dtype.names is None]
-            if not arrays: raise ValueError("FITS file has no numeric image extension.")
-            return prepare_array(arrays[0])
-    except ImportError as exc: raise RuntimeError("FITS support requires astropy.") from exc
+            # --- 1. Try standard image extensions first ---
+            image_arrays = [
+                np.asarray(hdu.data)
+                for hdu in hdul
+                if hdu.data is not None and np.asarray(hdu.data).dtype.names is None
+            ]
+            if image_arrays:
+                return prepare_array(image_arrays[0])
+
+            # --- 2. Handle event-list BinTable (e.g. Aditya-L1 HLS evt.fits) ---
+            table_hdus = [
+                hdu for hdu in hdul
+                if hdu.data is not None and hasattr(hdu.data, "dtype")
+                and hdu.data.dtype.names is not None
+            ]
+            if not table_hdus:
+                raise ValueError("FITS file has no numeric image or binary table extension.")
+
+            tbl = table_hdus[0].data
+            cols = list(tbl.dtype.names)
+
+            # Prefer known time-series columns; fall back to first numeric column
+            time_col = next((c for c in cols if c.upper() in ("TIME", "T")), None)
+            rate_col = next(
+                (c for c in cols if c.upper() in ("RATE", "COUNTS", "COUNT", "PI", "ENERGY", "CHANNEL", "PH_VALUE")),
+                None,
+            )
+
+            if rate_col:
+                # Use count rate / energy column directly as signal
+                signal_raw = np.asarray(tbl[rate_col], dtype=np.float64).reshape(-1)
+            elif time_col:
+                # Bin photon arrival times into 512-bin count-rate histogram
+                times = np.asarray(tbl[time_col], dtype=np.float64)
+                times = times[np.isfinite(times)]
+                signal_raw, _ = np.histogram(times, bins=WINDOW)
+                signal_raw = signal_raw.astype(np.float64)
+            else:
+                # Last resort: first numeric column
+                for col in cols:
+                    try:
+                        arr = np.asarray(tbl[col], dtype=np.float64).reshape(-1)
+                        if np.isfinite(arr).any():
+                            signal_raw = arr
+                            break
+                    except (TypeError, ValueError):
+                        continue
+                else:
+                    raise ValueError("No usable numeric column found in FITS table.")
+
+            return prepare_array(signal_raw)
+
+    except ImportError as exc:
+        raise RuntimeError("FITS support requires astropy.") from exc
