@@ -4,9 +4,9 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     volumes:
-      - ./data:/app/data:ro
-      - ./models:/app/models:ro
-      - ./experiments:/app/experiments:ro
+      - /opt/helioforge-ai/experiments:/opt/helioforge-ai/experiments:ro
+      - /opt/helioforge-ai/models:/opt/helioforge-ai/models:ro
+      - /opt/helioforge-ai/data:/opt/helioforge-ai/data:ro
     expose:
       - "8000"
     restart: unless-stopped
