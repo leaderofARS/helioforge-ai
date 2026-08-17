@@ -35,6 +35,7 @@ export default function Navbar() {
 
   useEffect(() => {
     fetchHealth();
+    fetchDemo(0);
     const updateTime = () => {
       const now = new Date();
       setUtcTime(now.toISOString().substring(11, 19) + " UTC");
@@ -42,7 +43,7 @@ export default function Navbar() {
     updateTime();
     const timer = setInterval(updateTime, 1000);
     return () => clearInterval(timer);
-  }, [fetchHealth]);
+  }, [fetchHealth, fetchDemo]);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-[#030712]/90 backdrop-blur-xl">
