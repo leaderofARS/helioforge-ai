@@ -1,18 +1,46 @@
 "use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { usePredictionStore } from "@/store/usePredictionStore";
-import SunScene from "@/components/three/SunScene";
-import UploadPanel from "@/components/upload/UploadPanel";
-import { FeatureView, IntensityView, SignalView } from "./AnalysisViews";
-import ExplanationPanel from "./ExplanationPanel";
-import { API_BASE_URL } from "@/lib/api";
-const labels=["Quiet","B","C","M","X"] as const; const colors={Quiet:"#22c55e",B:"#eab308",C:"#f97316",M:"#ef4444",X:"#a855f7"};
-const title:Record<string,string>={control:"Mission Control",sun:"3D Interactive Sun",evolution:"Solar Evolution Timeline",prediction:"Live AI Prediction",intensity:"Solar Intensity",signals:"Signal Analysis",features:"Feature Dashboard",upload:"Dataset Explorer",animation:"Flare Evolution Animation",forecast:"Solar Flare Trajectory Forecast"};
-function Card({children}:{children:React.ReactNode}){return <section className="panel p-5">{children}</section>}
-function ProbabilityBars(){const {prediction}=usePredictionStore();return <div className="space-y-3">{labels.map(label=><div key={label}><div className="mb-1 flex justify-between text-sm"><span style={{color:colors[label]}}>{label}</span><span className="mono">{(prediction.probabilities[label]*100).toFixed(1)}%</span></div><div className="h-2 overflow-hidden rounded bg-slate-800"><div className="h-full rounded" style={{width:`${Math.max(prediction.probabilities[label]*100,.5)}%`,backgroundColor:colors[label]}}/></div></div>)}</div>}
-function Evolution(){const [frames,setFrames]=useState<{class:number;label:string;confidence:number;timestamp:string}[]>([]);const {setPrediction}=usePredictionStore();useEffect(()=>{fetch(`${API_BASE_URL}/api/evolution`).then(r=>r.json()).then(data=>setFrames(data.sequence ?? [])).catch(()=>setFrames([{class:0,label:"Quiet",confidence:.91,timestamp:"t − 4h"},{class:1,label:"B",confidence:.78,timestamp:"t − 3h"},{class:1,label:"B",confidence:.82,timestamp:"t − 2h"},{class:2,label:"C",confidence:.73,timestamp:"t − 1h"},{class:3,label:"M",confidence:.87,timestamp:"Current"}]))},[]);return <div className="grid gap-4 md:grid-cols-5">{frames.map((frame,index)=><button className="panel p-4 text-left transition hover:border-orange-400" onClick={()=>setPrediction({predicted_class:frame.class,predicted_label:frame.label as "Quiet"|"B"|"C"|"M"|"X",confidence:frame.confidence,risk_level:frame.class<2?"LOW":frame.class===2?"MEDIUM":frame.class===3?"HIGH":"EXTREME",probabilities:{Quiet:0,B:0,C:0,M:0,X:0},observation_id:`EVOLUTION_${index}`})} key={`${frame.timestamp}-${index}`}><div className="mx-auto h-20 w-20 rounded-full" style={{background:`radial-gradient(circle at 35% 30%,#ffd27a,${colors[frame.label as keyof typeof colors]} 62%,#160603)`}}/><p className="mt-4 font-bold" style={{color:colors[frame.label as keyof typeof colors]}}>{frame.label}-class</p><p className="mono text-xs">{new Date(frame.timestamp).toLocaleTimeString()} · {(frame.confidence*100).toFixed(0)}%</p></button>)}</div>}
-function Animation(){const [current,setCurrent]=useState(0);const [playing,setPlaying]=useState(false);useEffect(()=>{if(!playing)return;const id=setInterval(()=>setCurrent(value=>(value+1)%5),1500);return()=>clearInterval(id)},[playing]);return <div><div className="flex min-h-80 items-center justify-center"><div className="sun" style={{filter:`hue-rotate(${current*38}deg)`,transform:`scale(${1+current*.08})`}}/></div><div className="flex flex-wrap items-center gap-3"><button className="rounded bg-orange-500 px-4 py-2 font-bold text-black" onClick={()=>setPlaying(!playing)}>{playing?"Pause":"Play"}</button>{labels.map((label,i)=><button className="rounded border border-slate-600 px-3 py-2" onClick={()=>setCurrent(i)} key={label}>{label}</button>)}</div><p className="mono mt-4 text-sm">STATE {current+1}: {labels[current]} · corona {1+current*.35}× · { [0,10,50,200,800][current] } particles</p></div>}
-export default function DashboardPage({section}:{section:string}){const {prediction,fetchDemo,error}=usePredictionStore();useEffect(()=>{fetchDemo()},[fetchDemo]);if(section==="control")return <div className="space-y-6"><header><p className="mono text-xs tracking-[.25em] text-orange-400">ADITYA-L1 • SOLAR FLARE INTELLIGENCE</p><h1 className="mt-2 text-4xl font-bold md:text-6xl">Mission Control</h1>{error&&<p className="mt-2 text-sm text-amber-300">{error}</p>}</header><div className="grid gap-8 lg:grid-cols-[1.2fr_.8fr]"><SunScene/><div className="space-y-4"><Card><p className="text-sm text-slate-400">OBSERVATION</p><p className="mono mt-1">{prediction.observation_id}</p></Card><Card><p className="text-sm text-slate-400">AI PREDICTION</p><p className="mt-1 text-3xl font-bold" style={{color:colors[prediction.predicted_label]}}>{prediction.predicted_label}-CLASS</p><p className="mono mt-3">{(prediction.confidence*100).toFixed(1)}% · {prediction.risk_level} RISK</p></Card><Card><ProbabilityBars/></Card></div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[["/signals","Signal"],["/evolution","Evolution"],["/features","Features"],["/performance","Performance"],["/upload","Upload"]].map(([href,name])=><Link className="panel p-4 transition hover:border-orange-400" href={href} key={href}>{name} →</Link>)}</div></div>;
- const content=section==="sun"?<SunScene/>:section==="evolution"?<Evolution/>:section==="prediction"?<div className="space-y-6"><div className="grid gap-6 lg:grid-cols-2"><Card><p className="text-sm text-slate-400">PREDICTED CLASS</p><p className="mt-2 text-5xl font-bold" style={{color:colors[prediction.predicted_label]}}>{prediction.predicted_label}</p><p className="mono mt-4">{(prediction.confidence*100).toFixed(1)}% confidence · {prediction.risk_level}</p></Card><Card><h2 className="mb-4 text-lg font-bold">Class probability distribution</h2><ProbabilityBars/></Card></div><ExplanationPanel/></div>:section==="intensity"?<IntensityView/>:section==="signals"?<SignalView/>:section==="features"?<FeatureView/>:section==="upload"?<UploadPanel/>:section==="animation"?<Animation/>:<Card><p className="text-slate-400">Forecasting is presented as a mission-ready placeholder while the multi-step model is under development.</p><div className="my-8 flex items-center gap-6"><span className="rounded bg-orange-500/20 p-4">Current: C-class</span> → <span className="rounded bg-red-500/20 p-4">30 min: M-class</span> → <span className="rounded bg-purple-500/20 p-4">60 min: X-class alert</span></div><p>Recommended: switch sensitive instruments to safe mode and alert ground-station teams.</p></Card>;
- return <div className="space-y-6"><h1 className="text-4xl font-bold">{title[section]}</h1>{content}</div>}
+
+import { usePredictionStore, type ActiveSection } from "@/store/usePredictionStore";
+import OverviewControl from "@/components/dashboard/OverviewControl";
+import InteractiveSunView from "@/components/dashboard/InteractiveSunView";
+import EvolutionView from "@/components/dashboard/EvolutionView";
+import PredictionView from "@/components/dashboard/PredictionView";
+import IntensityView from "@/components/dashboard/IntensityView";
+import SignalsView from "@/components/dashboard/SignalsView";
+import FeaturesView from "@/components/dashboard/FeaturesView";
+import ExplanationView from "@/components/dashboard/ExplanationView";
+import UploadView from "@/components/dashboard/UploadView";
+import PerformanceView from "@/components/dashboard/PerformanceView";
+import AnimationView from "@/components/dashboard/AnimationView";
+import ForecastView from "@/components/dashboard/ForecastView";
+
+export default function DashboardPage({ section }: { section?: ActiveSection }) {
+  const { activeSection } = usePredictionStore();
+  const currentSection = section || activeSection || "control";
+
+  switch (currentSection) {
+    case "sun":
+      return <InteractiveSunView />;
+    case "evolution":
+      return <EvolutionView />;
+    case "prediction":
+      return <PredictionView />;
+    case "intensity":
+      return <IntensityView />;
+    case "signals":
+      return <SignalsView />;
+    case "features":
+      return <FeaturesView />;
+    case "upload":
+      return <UploadView />;
+    case "performance":
+      return <PerformanceView />;
+    case "animation":
+      return <AnimationView />;
+    case "forecast":
+      return <ForecastView />;
+    case "control":
+    default:
+      return <OverviewControl />;
+  }
+}

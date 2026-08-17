@@ -1,12 +1,118 @@
 "use client";
 import { create } from "zustand";
-import { getDemoPrediction, predictFile, type Prediction } from "@/lib/api";
+import {
+  getDemoPrediction,
+  getHealth,
+  predictFile,
+  generateFallbackPrediction,
+  type Prediction,
+  type Health,
+  type ActiveRegion,
+} from "@/lib/api";
 
-const fallback: Prediction = { predicted_class: 3, predicted_label: "M", confidence: .87, risk_level: "HIGH", probabilities: { Quiet: 0, B: .03, C: .09, M: .84, X: .04 }, observation_id: "OBS_20260728_0031" };
-type State = { prediction: Prediction; isLoading: boolean; error: string | null; setPrediction: (prediction: Prediction) => void; fetchDemo: (index?: number) => Promise<void>; predict: (file: File) => Promise<void> };
-export const usePredictionStore = create<State>((set) => ({
-  prediction: fallback, isLoading: false, error: null,
-  setPrediction: (prediction) => set({ prediction, error: null }),
-  fetchDemo: async (index = 0) => { set({ isLoading: true, error: null }); try { set({ prediction: await getDemoPrediction(index), isLoading: false }); } catch { set({ isLoading: false, error: "Live API unavailable — showing mission reference data." }); } },
-  predict: async (file) => { set({ isLoading: true, error: null }); try { set({ prediction: await predictFile(file), isLoading: false }); } catch (error) { set({ isLoading: false, error: error instanceof Error ? error.message : "Upload failed." }); } },
+export type WavelengthMode = "171" | "304" | "131" | "hmi" | "rgb";
+
+export type ActiveSection =
+  | "control"
+  | "sun"
+  | "evolution"
+  | "prediction"
+  | "intensity"
+  | "signals"
+  | "features"
+  | "upload"
+  | "performance"
+  | "animation"
+  | "forecast";
+
+interface PredictionStoreState {
+  prediction: Prediction;
+  health: Health | null;
+  isLoading: boolean;
+  error: string | null;
+  activeSection: ActiveSection;
+  wavelength: WavelengthMode;
+  selectedRegion: ActiveRegion | null;
+  demoIndex: number;
+
+  // Actions
+  setPrediction: (prediction: Prediction) => void;
+  setActiveSection: (section: ActiveSection) => void;
+  setWavelength: (mode: WavelengthMode) => void;
+  setSelectedRegion: (region: ActiveRegion | null) => void;
+  fetchDemo: (index?: number) => Promise<void>;
+  predict: (file: File) => Promise<void>;
+  fetchHealth: () => Promise<void>;
+}
+
+const initialPrediction = generateFallbackPrediction(0);
+
+export const usePredictionStore = create<PredictionStoreState>((set) => ({
+  prediction: initialPrediction,
+  health: null,
+  isLoading: false,
+  error: null,
+  activeSection: "control",
+  wavelength: "171",
+  selectedRegion: initialPrediction.active_regions?.[0] || null,
+  demoIndex: 0,
+
+  setPrediction: (prediction) =>
+    set({
+      prediction,
+      selectedRegion: prediction.active_regions?.[0] || null,
+      error: null,
+    }),
+
+  setActiveSection: (activeSection) => set({ activeSection }),
+
+  setWavelength: (wavelength) => set({ wavelength }),
+
+  setSelectedRegion: (selectedRegion) => set({ selectedRegion }),
+
+  fetchDemo: async (index = 0) => {
+    set({ isLoading: true, error: null, demoIndex: index });
+    try {
+      const data = await getDemoPrediction(index);
+      set({
+        prediction: data,
+        selectedRegion: data.active_regions?.[0] || null,
+        isLoading: false,
+      });
+    } catch {
+      const fallback = generateFallbackPrediction(index);
+      set({
+        prediction: fallback,
+        selectedRegion: fallback.active_regions?.[0] || null,
+        isLoading: false,
+        error: "Live backend offline — displaying offline mission reference telemetry.",
+      });
+    }
+  },
+
+  predict: async (file: File) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await predictFile(file);
+      set({
+        prediction: data,
+        selectedRegion: data.active_regions?.[0] || null,
+        isLoading: false,
+      });
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: err instanceof Error ? err.message : "FITS observation parsing failed.",
+      });
+    }
+  },
+
+  fetchHealth: async () => {
+    try {
+      const healthData = await getHealth();
+      set({ health: healthData });
+    } catch {
+      set({ health: null });
+    }
+  },
 }));
